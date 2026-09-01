@@ -42,15 +42,15 @@ jobs:
           git fetch && git checkout orion && git submodule update --init
 
       # ---------- Tải iPhoneOS SDK hiện đại (khớp Swift compiler của Xcode 16.4) ----------
-      - name: Download modern iPhoneOS SDK
+      - name: Download iPhoneOS16.5.sdk
         run: |
           mkdir -p "$THEOS/sdks"
-          curl -L -o /tmp/iPhoneOS18.4.sdk.zip \
-            "https://github.com/xybp888/iOS-SDKs/releases/download/iOS18.4-SDKs/iPhoneOS18.4.sdk.zip"
-          unzip -q /tmp/iPhoneOS18.4.sdk.zip -d "$THEOS/sdks"
+          curl -L -o /tmp/iPhoneOS16.5.sdk.tar.xz \
+            "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz"
+          tar -xJf /tmp/iPhoneOS16.5.sdk.tar.xz -C "$THEOS/sdks"
           echo "----- Nội dung $THEOS/sdks -----"
           ls -la "$THEOS/sdks"
-          du -sh "$THEOS/sdks"/iPhoneOS18.4.sdk
+          du -sh "$THEOS/sdks"/iPhoneOS16.5.sdk
 
       - name: Clone and build Comet
         run: |
@@ -61,9 +61,7 @@ jobs:
           git clone https://github.com/ginsudev/Comet.git
           cd Comet
 
-          # Sửa TARGET sang SDK 18.4
-          sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:14.5|' Makefile
-
+          # Giữ nguyên TARGET 16.5 (không sửa)
           make spm
           make package ROOTLESS=true
 
