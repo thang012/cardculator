@@ -30,7 +30,6 @@ jobs:
 
       # ============================================================
       # XCODE
-      # macos-15 provides Xcode 16.4
       # ============================================================
 
       - name: Select Xcode 16.4
@@ -49,14 +48,11 @@ jobs:
 
           xcode-select -p
           xcodebuild -version
-
-          echo
-          echo "Available iPhoneOS SDKs:"
-          xcodebuild -showsdks | grep -i iphoneos || true
+          xcodebuild -showsdks
 
 
       # ============================================================
-      # INSTALL THEOS
+      # THEOS
       # ============================================================
 
       - name: Install Theos
@@ -65,7 +61,7 @@ jobs:
           set -e
 
           echo "=========================================="
-          echo "                THEOS"
+          echo "                 THEOS"
           echo "=========================================="
 
           rm -rf "$THEOS"
@@ -87,13 +83,9 @@ jobs:
           echo "Theos commit:"
           git rev-parse HEAD
 
-          echo
-          echo "Theos version:"
-          git log -1 --oneline
-
 
       # ============================================================
-      # INSTALL LDID
+      # LDID
       # ============================================================
 
       - name: Install ldid
@@ -102,31 +94,26 @@ jobs:
           set -e
 
           echo "=========================================="
-          echo "                 LDID"
+          echo "                  LDID"
           echo "=========================================="
 
           brew install ldid
 
           command -v ldid
 
-          echo
           ldid --version 2>&1 || true
 
 
       # ============================================================
-      # INSTALL iPhoneOS 16.4 SDK
+      # iPhoneOS 16.4 SDK
       #
-      # IMPORTANT:
+      # Required by Cardculator:
       #
-      # Do NOT use the old GitHub release API.
+      #   iphone:clang:16.4:13.0
       #
-      # xybp888/iOS-SDKs contains the actual SDK directory:
+      # Installed as:
       #
-      #   iPhoneOS16.4.sdk/
-      #
-      # Cardculator Makefile explicitly requires:
-      #
-      #   THEOS/sdks/iPhoneOS16.4.sdk
+      #   $THEOS/sdks/iPhoneOS16.4.sdk
       # ============================================================
 
       - name: Install iPhoneOS 16.4 SDK
@@ -139,94 +126,141 @@ jobs:
           echo "=========================================="
 
           SDK_DIR="$THEOS/sdks"
-          SDK_SOURCE="/tmp/iOS-SDKs/iPhoneOS16.4.sdk"
-          SDK_DEST="$SDK_DIR/iPhoneOS16.4.sdk"
+          REPO="/tmp/iOS-SDKs"
 
-          rm -rf "/tmp/iOS-SDKs"
-          rm -rf "$SDK_DEST"
+          rm -rf "$REPO"
+          rm -rf "$SDK_DIR/iPhoneOS16.4.sdk"
 
           mkdir -p "$SDK_DIR"
-
-          echo
-          echo "Cloning iOS-SDKs repository..."
 
           git clone \
             --depth 1 \
             --filter=blob:none \
             --sparse \
             https://github.com/xybp888/iOS-SDKs.git \
-            /tmp/iOS-SDKs
+            "$REPO"
 
-          cd /tmp/iOS-SDKs
-
-          echo
-          echo "Enabling iPhoneOS16.4.sdk..."
+          cd "$REPO"
 
           git sparse-checkout set iPhoneOS16.4.sdk
 
-          echo
-          echo "Checking SDK source..."
+          SDK_SOURCE="$REPO/iPhoneOS16.4.sdk"
+          SDK_DEST="$SDK_DIR/iPhoneOS16.4.sdk"
 
           if [ ! -d "$SDK_SOURCE" ]; then
-            echo
-            echo "ERROR: iPhoneOS16.4.sdk was not found."
-            echo
-            echo "Repository contents:"
-            find /tmp/iOS-SDKs -maxdepth 2 -type d -print
+            echo "ERROR: iPhoneOS16.4.sdk not found."
+            find "$REPO" -maxdepth 2 -type d -print
             exit 1
           fi
 
-          echo
-          echo "SDK source:"
-          echo "$SDK_SOURCE"
-
-          echo
-          echo "SDK size:"
-          du -sh "$SDK_SOURCE"
-
-          echo
-          echo "SDKSettings:"
-          test -f "$SDK_SOURCE/SDKSettings.plist"
-
-          echo "SDKSettings.plist found."
-
-          echo
-          echo "Installing SDK into Theos..."
-
-          cp -R \
-            "$SDK_SOURCE" \
-            "$SDK_DEST"
-
-          echo
-          echo "=========================================="
-          echo "       INSTALLED iPhoneOS 16.4 SDK"
-          echo "=========================================="
-
-          ls -ld "$SDK_DEST"
-
-          du -sh "$SDK_DEST"
-
-          echo
-          echo "SDKSettings.plist:"
-          plutil \
-            -p \
-            "$SDK_DEST/SDKSettings.plist" \
-            | head -100
-
-          echo
-          echo "SDK verification:"
+          cp -R "$SDK_SOURCE" "$SDK_DEST"
 
           test -d "$SDK_DEST"
           test -f "$SDK_DEST/SDKSettings.plist"
-          test -d "$SDK_DEST/System"
-          test -d "$SDK_DEST/usr"
 
           echo
-          echo "iPhoneOS 16.4 SDK installed successfully."
+          echo "Installed:"
+          ls -ld "$SDK_DEST"
+
+          echo
+          echo "Size:"
+          du -sh "$SDK_DEST"
 
 
       # ============================================================
-      # VERIFY CARDculator SOURCE
+      # iPhoneOS 16.5 SDK
+      #
+      # Required by Comet 1.0.0.
+      #
+      # Comet's Makefile selects:
+      #
+      #   iPhoneOS16.5.sdk
+      #
+      # We install BOTH 16.4 and 16.5 so each project can use
+      # its original SDK target without modifying either source.
+      # ============================================================
+
+      - name: Install iPhoneOS 16.5 SDK
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "       INSTALL iPhoneOS 16.5 SDK"
+          echo "=========================================="
+
+          SDK_DIR="$THEOS/sdks"
+          REPO="/tmp/iOS-SDKs"
+
+          rm -rf "$REPO"
+          rm -rf "$SDK_DIR/iPhoneOS16.5.sdk"
+
+          mkdir -p "$SDK_DIR"
+
+          git clone \
+            --depth 1 \
+            --filter=blob:none \
+            --sparse \
+            https://github.com/xybp888/iOS-SDKs.git \
+            "$REPO"
+
+          cd "$REPO"
+
+          git sparse-checkout set iPhoneOS16.5.sdk
+
+          SDK_SOURCE="$REPO/iPhoneOS16.5.sdk"
+          SDK_DEST="$SDK_DIR/iPhoneOS16.5.sdk"
+
+          if [ ! -d "$SDK_SOURCE" ]; then
+            echo "ERROR: iPhoneOS16.5.sdk not found."
+            find "$REPO" -maxdepth 2 -type d -print
+            exit 1
+          fi
+
+          cp -R "$SDK_SOURCE" "$SDK_DEST"
+
+          test -d "$SDK_DEST"
+          test -f "$SDK_DEST/SDKSettings.plist"
+
+          echo
+          echo "Installed:"
+          ls -ld "$SDK_DEST"
+
+          echo
+          echo "Size:"
+          du -sh "$SDK_DEST"
+
+
+      # ============================================================
+      # VERIFY SDKs
+      # ============================================================
+
+      - name: Verify Theos SDKs
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "              THEOS SDKS"
+          echo "=========================================="
+
+          echo
+          echo "SDK directory:"
+          ls -lah "$THEOS/sdks"
+
+          echo
+          echo "iPhoneOS 16.4:"
+          test -f "$THEOS/sdks/iPhoneOS16.4.sdk/SDKSettings.plist"
+          echo "OK"
+
+          echo
+          echo "iPhoneOS 16.5:"
+          test -f "$THEOS/sdks/iPhoneOS16.5.sdk/SDKSettings.plist"
+          echo "OK"
+
+
+      # ============================================================
+      # VERIFY CARDculator
       # ============================================================
 
       - name: Verify Cardculator source
@@ -239,25 +273,15 @@ jobs:
           echo "=========================================="
 
           echo
-          echo "Git commit:"
+          echo "Commit:"
           git rev-parse HEAD
 
           echo
-          echo "Git status:"
-          git status --short
-
-          echo
-          echo "=========================================="
-          echo "              CONTROL"
-          echo "=========================================="
-
+          echo "Control:"
           cat control
 
           echo
-          echo "=========================================="
-          echo "             MAKEFILE"
-          echo "=========================================="
-
+          echo "Makefile:"
           cat Makefile
 
           echo
@@ -267,89 +291,30 @@ jobs:
 
           VERSION=$(grep '^Version:' control | awk '{print $2}')
 
-          echo "Detected version: $VERSION"
+          echo "Version: $VERSION"
 
           if [ "$VERSION" != "2.1.1" ]; then
-            echo
             echo "ERROR: Expected Cardculator 2.1.1."
             exit 1
           fi
 
-          echo
           echo "Cardculator 2.1.1 confirmed."
 
           echo
           echo "=========================================="
-          echo "           VERIFY SDK TARGET"
+          echo "            VERIFY SDK TARGET"
           echo "=========================================="
 
-          if grep -q 'TARGET := iphone:clang:16.4:13.0' Makefile; then
-            echo "SDK target confirmed:"
-            echo "iphone:clang:16.4:13.0"
-          else
-            echo
-            echo "ERROR: Expected SDK target not found."
-            exit 1
-          fi
+          grep -n \
+            'iphone:clang:16.4:13.0' \
+            Makefile
 
           echo
-          echo "=========================================="
-          echo "           VERIFY SYSROOT"
-          echo "=========================================="
-
-          if grep -q 'iPhoneOS16.4.sdk' Makefile; then
-            echo "Sysroot target confirmed:"
-            echo "iPhoneOS16.4.sdk"
-          else
-            echo
-            echo "ERROR: iPhoneOS16.4.sdk reference not found."
-            exit 1
-          fi
+          echo "Cardculator SDK target confirmed."
 
 
       # ============================================================
-      # VERIFY THEOS SDK
-      # ============================================================
-
-      - name: Verify Theos SDK
-        shell: bash
-        run: |
-          set -e
-
-          SDK="$THEOS/sdks/iPhoneOS16.4.sdk"
-
-          echo "=========================================="
-          echo "            VERIFY THEOS SDK"
-          echo "=========================================="
-
-          echo
-          echo "SDK:"
-          echo "$SDK"
-
-          test -d "$SDK"
-          test -f "$SDK/SDKSettings.plist"
-
-          echo
-          echo "SDK directory:"
-          ls -ld "$SDK"
-
-          echo
-          echo "SDK size:"
-          du -sh "$SDK"
-
-          echo
-          echo "SDK settings:"
-          plutil -p "$SDK/SDKSettings.plist" | head -80
-
-
-      # ============================================================
-      # CLONE COMET
-      #
-      # Cardculator depends on:
-      #
-      #   com.ginsu.comet
-      #
-      # Comet is a SwiftUI preference framework.
+      # COMET
       # ============================================================
 
       - name: Clone Comet
@@ -362,7 +327,7 @@ jobs:
           rm -rf "$COMET_DIR"
 
           echo "=========================================="
-          echo "                COMET"
+          echo "                 COMET"
           echo "=========================================="
 
           git clone \
@@ -374,33 +339,55 @@ jobs:
           git fetch --all --tags
 
           echo
-          echo "Remote:"
-          git remote -v
-
-          echo
-          echo "Current commit:"
+          echo "Commit:"
           git rev-parse HEAD
 
           echo
-          echo "Available tags:"
-          git tag --sort=-version:refname | head -30
-
-          echo
-          echo "Comet control:"
+          echo "Control:"
           cat control
 
           echo
-          echo "Comet Makefile:"
+          echo "Makefile:"
           cat Makefile
 
 
       # ============================================================
+      # VERIFY COMET SDK
+      # ============================================================
+
+      - name: Verify Comet SDK target
+        shell: bash
+        run: |
+          set -e
+
+          COMET_DIR="$RUNNER_TEMP/Comet"
+
+          cd "$COMET_DIR"
+
+          echo "=========================================="
+          echo "          VERIFY COMET SDK"
+          echo "=========================================="
+
+          echo
+          echo "Comet target references:"
+
+          grep -n \
+            -E \
+            '16\.5|SDK' \
+            Makefile \
+            || true
+
+          echo
+          echo "Checking iPhoneOS16.5.sdk..."
+
+          test -d "$THEOS/sdks/iPhoneOS16.5.sdk"
+          test -f "$THEOS/sdks/iPhoneOS16.5.sdk/SDKSettings.plist"
+
+          echo "iPhoneOS16.5.sdk is available."
+
+
+      # ============================================================
       # BUILD COMET
-      #
-      # Do not assume a specific tag exists.
-      #
-      # Cardculator only needs the Comet framework matching the
-      # com.ginsu.comet dependency.
       # ============================================================
 
       - name: Build Comet
@@ -413,12 +400,14 @@ jobs:
           cd "$COMET_DIR"
 
           echo "=========================================="
-          echo "             BUILD COMET"
+          echo "              BUILD COMET"
           echo "=========================================="
 
           echo
-          echo "Comet version from control:"
-          grep -E '^(Version|Package|Architecture):' control || true
+          echo "Comet control:"
+          grep -E \
+            '^(Package|Architecture|Version):' \
+            control
 
           echo
           echo "Cleaning..."
@@ -426,7 +415,7 @@ jobs:
           make clean || true
 
           echo
-          echo "Building Comet..."
+          echo "Building..."
 
           make package \
             THEOS_PACKAGE_SCHEME=rootless \
@@ -434,7 +423,7 @@ jobs:
 
           echo
           echo "=========================================="
-          echo "            COMET PACKAGE"
+          echo "             COMET OUTPUT"
           echo "=========================================="
 
           find packages \
@@ -454,13 +443,6 @@ jobs:
 
       # ============================================================
       # INSTALL COMET FRAMEWORK
-      #
-      # Comet README explicitly states that the framework can be
-      # copied into:
-      #
-      #   $(THEOS)/lib/
-      #
-      # We use the rootless Theos lib directory.
       # ============================================================
 
       - name: Install Comet framework
@@ -474,9 +456,6 @@ jobs:
           echo "         INSTALL COMET FRAMEWORK"
           echo "=========================================="
 
-          echo
-          echo "Searching for Comet.framework..."
-
           COMET_FRAMEWORK=$(
             find "$COMET_DIR" \
               -type d \
@@ -488,12 +467,14 @@ jobs:
           if [ -z "$COMET_FRAMEWORK" ]; then
             echo
             echo "ERROR: Comet.framework was not found."
+
             echo
-            echo "Comet tree:"
+            echo "Comet build tree:"
+
             find "$COMET_DIR" \
-              -maxdepth 6 \
+              -maxdepth 7 \
               -print \
-              | head -400
+              | head -500
 
             exit 1
           fi
@@ -513,25 +494,18 @@ jobs:
             "$TARGET/Comet.framework"
 
           echo
-          echo "Installed framework:"
+          echo "Installed:"
           ls -la "$TARGET/Comet.framework"
 
-          if [ ! -f "$TARGET/Comet.framework/Comet" ]; then
-            echo
-            echo "ERROR: Comet framework binary is missing."
-            exit 1
-          fi
+          test -f "$TARGET/Comet.framework/Comet"
 
           echo
-          echo "Comet binary:"
+          echo "Binary:"
           file "$TARGET/Comet.framework/Comet"
 
           echo
-          echo "Comet architectures:"
+          echo "Architecture:"
           lipo -info "$TARGET/Comet.framework/Comet"
-
-          echo
-          echo "Comet framework verified."
 
 
       # ============================================================
@@ -544,7 +518,7 @@ jobs:
           set -e
 
           echo "=========================================="
-          echo "            REMOTELOG.H"
+          echo "              REMOTELOG"
           echo "=========================================="
 
           mkdir -p "$THEOS/include"
@@ -563,7 +537,7 @@ jobs:
 
 
       # ============================================================
-      # PREPARE THEOS SPM
+      # THEOS SPM
       # ============================================================
 
       - name: Prepare Theos SPM
@@ -580,12 +554,11 @@ jobs:
           make spm
 
           echo
-          echo "SPM output:"
+          echo "SPM config:"
 
           if [ -f ".theos/spm_config" ]; then
             cat ".theos/spm_config"
           else
-            echo
             echo "ERROR: .theos/spm_config was not generated."
             exit 1
           fi
@@ -615,88 +588,7 @@ jobs:
 
 
       # ============================================================
-      # FIND BUILD OUTPUT
-      # ============================================================
-
-      - name: Find build output
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "             BUILD OUTPUT"
-          echo "=========================================="
-
-          echo
-          echo "Packages directory:"
-
-          if [ -d packages ]; then
-            ls -lah packages
-          else
-            echo "ERROR: packages directory does not exist."
-            exit 1
-          fi
-
-          echo
-          echo "All deb files:"
-
-          find packages \
-            -maxdepth 1 \
-            -type f \
-            -name "*.deb" \
-            -print
-
-
-      # ============================================================
-      # INSPECT PREFS.BUNDLE
-      # ============================================================
-
-      - name: Inspect prefs.bundle
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "          INSPECT PREFS.BUNDLE"
-          echo "=========================================="
-
-          PREF_BUNDLE=$(
-            find . \
-              -type d \
-              -name "prefs.bundle" \
-              -print \
-              -quit
-          )
-
-          if [ -z "$PREF_BUNDLE" ]; then
-            echo
-            echo "ERROR: prefs.bundle was not found."
-
-            echo
-            echo "Available bundles:"
-
-            find . \
-              -type d \
-              -name "*.bundle" \
-              -print
-
-            exit 1
-          fi
-
-          echo
-          echo "prefs.bundle:"
-          echo "$PREF_BUNDLE"
-
-          echo
-          echo "Contents:"
-
-          find "$PREF_BUNDLE" \
-            -maxdepth 3 \
-            -print
-
-
-      # ============================================================
-      # PACKAGE CARDculator
+      # PACKAGE
       # ============================================================
 
       - name: Package Cardculator
@@ -711,14 +603,12 @@ jobs:
           export THEOS_PACKAGE_SCHEME=rootless
           export FINALPACKAGE=1
 
-          rm -rf packages/*.deb
-
           make package \
             THEOS_PACKAGE_SCHEME=rootless \
             FINALPACKAGE=1
 
           echo
-          echo "Generated packages:"
+          echo "Packages:"
 
           find packages \
             -maxdepth 1 \
@@ -726,29 +616,9 @@ jobs:
             -name "*.deb" \
             -print
 
-          CARD_DEB=$(
-            find packages \
-              -maxdepth 1 \
-              -type f \
-              -name "*.deb" \
-              -print \
-              | grep -v "com.ginsu.comet" \
-              | head -1
-          )
-
-          if [ -z "$CARD_DEB" ]; then
-            echo
-            echo "ERROR: Cardculator .deb was not produced."
-            exit 1
-          fi
-
-          echo
-          echo "Cardculator package:"
-          echo "$CARD_DEB"
-
 
       # ============================================================
-      # VERIFY FINAL DEB
+      # VERIFY FINAL PACKAGE
       # ============================================================
 
       - name: Verify final package
@@ -767,26 +637,29 @@ jobs:
           )
 
           if [ -z "$CARD_DEB" ]; then
-            echo "ERROR: Cardculator package not found."
+            echo "ERROR: Cardculator .deb not found."
             exit 1
           fi
 
           echo "=========================================="
-          echo "          PACKAGE CONTROL"
+          echo "           CARDculator DEB"
           echo "=========================================="
 
+          echo
+          echo "File:"
+          echo "$CARD_DEB"
+
+          echo
+          echo "Control:"
           dpkg-deb -I "$CARD_DEB"
 
           echo
-          echo "=========================================="
-          echo "         PACKAGE CONTENTS"
-          echo "=========================================="
-
+          echo "Contents:"
           dpkg-deb -c "$CARD_DEB"
 
           echo
           echo "=========================================="
-          echo "          PACKAGE VERSION"
+          echo "              VERSION"
           echo "=========================================="
 
           VERSION=$(dpkg-deb -f "$CARD_DEB" Version)
@@ -794,78 +667,62 @@ jobs:
           echo "Version: $VERSION"
 
           if [ "$VERSION" != "2.1.1" ]; then
-            echo
-            echo "ERROR: Expected Cardculator 2.1.1."
+            echo "ERROR: Expected version 2.1.1."
             exit 1
           fi
 
           echo
           echo "=========================================="
-          echo "        PACKAGE ARCHITECTURE"
-          echo "=========================================="
-
-          ARCH=$(dpkg-deb -f "$CARD_DEB" Architecture)
-
-          echo "Architecture: $ARCH"
-
-          echo
-          echo "=========================================="
-          echo "           PACKAGE DEPENDS"
-          echo "=========================================="
-
-          dpkg-deb -f "$CARD_DEB" Depends || true
-
-          echo
-          echo "=========================================="
-          echo "        VERIFY COMET DEPENDENCY"
+          echo "             DEPENDS"
           echo "=========================================="
 
           DEPENDS=$(dpkg-deb -f "$CARD_DEB" Depends || true)
 
-          if echo "$DEPENDS" | grep -q "com.ginsu.comet"; then
-            echo "com.ginsu.comet dependency confirmed."
-          else
+          echo "$DEPENDS"
+
+          if ! echo "$DEPENDS" | grep -q "com.ginsu.comet"; then
             echo
             echo "ERROR: com.ginsu.comet dependency missing."
             exit 1
           fi
 
           echo
-          echo "=========================================="
-          echo "        VERIFY PREFS.BUNDLE"
-          echo "=========================================="
-
-          if dpkg-deb -c "$CARD_DEB" \
-            | grep -q "Library/PreferenceBundles/prefs.bundle"; then
-            echo "prefs.bundle confirmed."
-          else
-            echo
-            echo "ERROR: prefs.bundle missing from package."
-            exit 1
-          fi
+          echo "com.ginsu.comet dependency confirmed."
 
           echo
           echo "=========================================="
-          echo "      VERIFY CONTROL CENTER MODULE"
+          echo "          PREFS.BUNDLE"
           echo "=========================================="
 
-          if dpkg-deb -c "$CARD_DEB" \
+          if ! dpkg-deb -c "$CARD_DEB" \
+            | grep -q "Library/PreferenceBundles/prefs.bundle"; then
+            echo "ERROR: prefs.bundle missing."
+            exit 1
+          fi
+
+          echo "prefs.bundle confirmed."
+
+          echo
+          echo "=========================================="
+          echo "       CONTROL CENTER MODULE"
+          echo "=========================================="
+
+          if ! dpkg-deb -c "$CARD_DEB" \
             | grep -q "CardculatorCCModule.bundle"; then
-            echo "CardculatorCCModule.bundle confirmed."
-          else
-            echo
             echo "ERROR: CardculatorCCModule.bundle missing."
             exit 1
           fi
 
+          echo "CardculatorCCModule.bundle confirmed."
+
           echo
           echo "=========================================="
-          echo "       FINAL PACKAGE VERIFICATION OK"
+          echo "        BUILD VERIFICATION OK"
           echo "=========================================="
 
 
       # ============================================================
-      # UPLOAD CARDculator
+      # UPLOAD
       # ============================================================
 
       - name: Upload Cardculator package
