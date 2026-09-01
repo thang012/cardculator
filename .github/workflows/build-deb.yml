@@ -23,7 +23,8 @@ jobs:
           xcodebuild -version
 
       # Theos có một tham chiếu cứng tới đường dẫn Xcode-15.4.0.app ở đâu đó
-      # trong quá trình build swift-support. Tạo symlink giả để thoả điều kiện đó.
+      # trong quá trình build swift-support (vì tác giả gốc build bằng Xcode 15.4,
+      # đi kèm SDK 16.4). macos-15 runner không có Xcode 15.4 nữa nên phải giả lập.
       - name: Workaround hardcoded Xcode-15.4.0.app path
         run: |
           sudo ln -sf /Applications/Xcode.app /Applications/Xcode-15.4.0.app
@@ -41,16 +42,23 @@ jobs:
           cd $THEOS
           git fetch && git checkout orion && git submodule update --init
 
-      # ---------- Tải iPhoneOS SDK hiện đại (khớp Swift compiler của Xcode 16.4) ----------
-      - name: Download iPhoneOS18.4.sdk
+      # ---------- Tải iPhoneOS SDK KHỚP với môi trường gốc của tác giả ----------
+      # Tác giả gốc build ở SDK 16.4 (Xcode 15.4). GitHub Actions macos-15 không
+      # còn Xcode cũ đó, nhưng ta không cần thiết phải nhảy hẳn lên SDK 18.4 (như
+      # bản trước) — điều đó khiến compiler cho phép gọi API SwiftUI/iOS 17+/18+
+      # mà máy m (16.7.1) không có, dễ gây crash runtime kiểu "app/prefs văng ngay
+      # khi mở". Ta dùng iPhoneOS16.5.sdk chính thức từ theos/sdks — bản patched-sdk
+      # do chính team Theos build & maintain, gần sát nhất với 16.4 gốc mà vẫn build
+      # được bằng Xcode 16 hiện có trên runner.
+      - name: Download iPhoneOS16.5.sdk (theos/sdks official)
         run: |
           mkdir -p "$THEOS/sdks"
-          curl -L -o /tmp/iPhoneOS18.4.sdk.zip \
-            "https://github.com/xybp888/iOS-SDKs/releases/download/iOS18.4-SDKs/iPhoneOS18.4.sdk.zip"
-          unzip -q /tmp/iPhoneOS18.4.sdk.zip -d "$THEOS/sdks"
+          curl -L -o /tmp/iPhoneOS16.5.sdk.tar.xz \
+            "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz"
+          tar -xJf /tmp/iPhoneOS16.5.sdk.tar.xz -C "$THEOS/sdks"
           echo "----- Nội dung $THEOS/sdks -----"
           ls -la "$THEOS/sdks"
-          du -sh "$THEOS/sdks"/iPhoneOS18.4.sdk
+          du -sh "$THEOS/sdks"/iPhoneOS16.5.sdk
 
       # ---------- Build Comet (thư viện SwiftUI cho preferences) ----------
       - name: Clone and build Comet
@@ -66,7 +74,10 @@ jobs:
           git clone https://github.com/ginsudev/Comet.git
           cd Comet
 
-          sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:14.5|' Makefile
+          # KHÔNG bump target lên 18.4 nữa. Makefile gốc của Comet đã là
+          # "iphone:clang:16.5:14.5" — đúng khớp với SDK 16.5 vừa tải, để nguyên.
+          echo "----- Comet Makefile TARGET (giữ nguyên, không patch) -----"
+          grep -n "^TARGET" Makefile
 
           cat > Sources/CometC/include/LSApplicationWorkspace.h << 'EOF'
           #import <Foundation/Foundation.h>
@@ -188,11 +199,15 @@ jobs:
           cd $GITHUB_WORKSPACE
 
           # rpath thật của Comet.framework trên máy rootless (Sileo cài Comet vào đây).
-          # THIẾU rpath này là nguyên nhân phổ biến nhất khiến prefs pane / tweak
-          # bị dyld crash ngay khi load, vì lúc link ta chỉ đổi tên thành
-          # @rpath/Comet.framework/Comet nhưng binary không có LC_RPATH nào trỏ
-          # tới nơi thực sự chứa framework đó trên thiết bị.
+          # Thiếu rpath này là nguyên nhân phổ biến khiến prefs pane / tweak bị dyld
+          # crash ngay khi load, vì lúc link ta chỉ đổi tên thành @rpath/Comet.framework/Comet
+          # nhưng binary không có LC_RPATH nào trỏ tới nơi thực sự chứa framework đó
+          # trên thiết bị.
           COMET_RPATH="/var/jb/Library/Frameworks"
+
+          # SDK khớp với môi trường gốc: dùng 16.5 (đã tải ở bước trên) thay vì 18.4.
+          TARGET_SDK="iPhoneOS16.5.sdk"
+          TARGET_CLANG_VER="16.5"
 
           # Vá CydiaSubstrate.tbd - bỏ arch simulator
           find "$THEOS" -name "CydiaSubstrate.tbd" | while read tbd; do
@@ -204,20 +219,24 @@ jobs:
             head -8 "$tbd"
           done
 
-          sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:14.0|' Makefile
-          sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
+          # Giữ deploy-target gốc (13.0) của Cardculator, chỉ đổi SDK/clang version
+          # từ 16.4 -> 16.5 (SDK 16.4 không có sẵn ở theos/sdks, 16.5 là bản vá gần
+          # nhất, tương thích ABI hoàn toàn với máy 16.7.1 của m).
+          sed -i '' "s|iphone:clang:16.4:13.0|iphone:clang:${TARGET_CLANG_VER}:13.0|" Makefile
+          sed -i '' "s|iPhoneOS16.4.sdk|${TARGET_SDK}|g" Makefile
 
-          # Vá tất cả Makefile con (prefs, cardculatorccmodule, ...)
+          # Vá tất cả Makefile con (prefs, cardculatorccmodule, ...) - giữ nguyên
+          # deploy-target đang có trong từng file, chỉ chuẩn hoá SDK/clang version.
           find . -name "Makefile" | while read mk; do
             echo "Patching $mk"
-            sed -i '' 's|iphone:clang:[0-9.]*:[0-9.]*|iphone:clang:18.4:14.0|g' "$mk"
-            sed -i '' 's|iPhoneOS[0-9.]*\.sdk|iPhoneOS18.4.sdk|g' "$mk"
+            sed -i '' "s|iphone:clang:[0-9.]*:|iphone:clang:${TARGET_CLANG_VER}:|g" "$mk"
+            sed -i '' "s|iPhoneOS[0-9.]*\.sdk|${TARGET_SDK}|g" "$mk"
           done
 
-          # Link + rpath cho binary chính Cardculator. Trước đây chỉ có
-          # -weak_framework SwiftUICore, KHÔNG có rpath -> nếu tweak này (hoặc
-          # bất kỳ phần nào của nó chạy ngoài luồng Orion injection) tự load
-          # Comet, nó cũng sẽ crash vì cùng lý do với prefs.
+          echo "----- Makefile sau khi patch SDK -----"
+          grep -rn "TARGET" --include=Makefile . || true
+
+          # Link + rpath cho binary chính Cardculator.
           echo "Cardculator_LDFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -rpath -Xlinker $COMET_RPATH" >> Makefile
           echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
           echo "Cardculator_SWIFTFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -framework Comet" >> Makefile
@@ -237,7 +256,7 @@ jobs:
               if [ -n "$INSTANCE" ]; then
                 echo "Patching $PREFS_MK for weak SwiftUICore link + rpath (instance: $INSTANCE)"
                 echo "${INSTANCE}_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore" >> "$PREFS_MK"
-                # ĐÂY LÀ FIX CHÍNH cho crash "Settings văng khi mở cài đặt tweak":
+                # FIX CHÍNH cho crash "Settings văng khi mở cài đặt tweak":
                 # thêm LC_RPATH trỏ đúng chỗ Sileo cài Comet trên máy rootless.
                 echo "${INSTANCE}_LDFLAGS += -Xlinker -rpath -Xlinker $COMET_RPATH" >> "$PREFS_MK"
               else
@@ -248,7 +267,6 @@ jobs:
 
           # Bỏ SwiftUI Preview (gây lỗi linker trên device)
           if [ -f Sources/Cardculator/CalculatorView.swift ]; then
-            # Xóa từ dòng #Preview hoặc struct ..._Previews trở đi
             sed -i '' '/#Preview/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
             sed -i '' '/struct CalculatorView_Previews/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
             sed -i '' '/PreviewProvider/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
@@ -272,7 +290,6 @@ jobs:
             sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' "$PREF_FILE"
             sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.medium\.rawValue|1|g' "$PREF_FILE"
             sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.heavy\.rawValue|2|g' "$PREF_FILE"
-            # Phòng trường hợp viết khác
             sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' "$PREF_FILE"
             perl -i -pe 's/UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue/0/g' "$PREF_FILE"
 
@@ -323,21 +340,16 @@ jobs:
           echo "----- BEFORE -----"
           otool -L "$PREF_BIN"
 
-          # Fix absolute/rootful Comet path -> rootless rpath
           if otool -L "$PREF_BIN" | grep -q "/Library/Frameworks/Comet.framework/Comet"; then
               echo "Fixing rootful Comet dependency..."
-
               install_name_tool \
                   -change "/Library/Frameworks/Comet.framework/Comet" \
                   "@rpath/Comet.framework/Comet" \
                   "$PREF_BIN"
           fi
 
-          # BELT-AND-SUSPENDERS: nếu vì lý do gì đó LDFLAGS ở trên không tới được
-          # linker (Theos đôi khi override _LDFLAGS của instance con), tự thêm
-          # rpath thẳng vào binary bằng install_name_tool. Không có tác dụng phụ
-          # nếu rpath đã tồn tại từ bước link (sẽ chỉ báo lỗi "would duplicate" và
-          # ta bỏ qua bằng || true).
+          # Belt-and-suspenders: đảm bảo rpath có trong binary kể cả khi LDFLAGS
+          # ở Makefile con không được Theos áp dụng đúng.
           if ! otool -l "$PREF_BIN" | grep -A2 LC_RPATH | grep -q "$COMET_RPATH"; then
               echo "rpath $COMET_RPATH chưa có trong prefs binary, tự thêm..."
               install_name_tool -add_rpath "$COMET_RPATH" "$PREF_BIN" || true
@@ -350,7 +362,6 @@ jobs:
           otool -l "$PREF_BIN" | grep -A2 -B1 LC_RPATH || true
 
           # ---------- Quét & vá rpath cho MỌI Mach-O binary có link Comet ----------
-          # (bao gồm cả binary chính Cardculator, không chỉ prefs) trước khi đóng gói.
           echo "=========================================="
           echo "Scanning all staged binaries for Comet linkage"
           echo "=========================================="
