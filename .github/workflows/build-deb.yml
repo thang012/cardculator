@@ -65,7 +65,7 @@ jobs:
           # Sửa TARGET sang 18.4
           sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:14.5|' Makefile
 
-          # Vá header bị lỗi LSApplicationProxy (SDK mới đã đổi API)
+          # Vá header LSApplicationProxy
           cat > Sources/CometC/include/LSApplicationWorkspace.h << 'EOF'
           #import <Foundation/Foundation.h>
 
@@ -94,6 +94,15 @@ jobs:
 
           NS_ASSUME_NONNULL_END
           EOF
+
+          # Cài libroot (cần cho rootless)
+          git clone https://github.com/opa334/libroot.git $THEOS/libroot
+          mkdir -p $THEOS/lib/iphone/rootless
+          cp -r $THEOS/libroot/libroot.framework $THEOS/lib/iphone/rootless/ 2>/dev/null || true
+
+          # Thêm flag để tìm thấy libroot
+          echo 'Comet_LDFLAGS += -F$(THEOS)/lib/iphone/rootless' >> Makefile
+          echo 'Comet_FRAMEWORKS += libroot' >> Makefile
 
           make spm
           make package ROOTLESS=true
