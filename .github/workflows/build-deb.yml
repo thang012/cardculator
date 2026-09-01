@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-13   # macOS runner có sẵn Xcode 14+
+    runs-on: macos-15   # macOS runner có sẵn Xcode 14+
 
     steps:
       - name: Checkout Cardculator source
