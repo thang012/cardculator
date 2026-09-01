@@ -198,6 +198,13 @@ jobs:
             sed -i '' '/struct CalculatorView_Previews/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
             sed -i '' '/PreviewProvider/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
           fi
+
+          # Vá CalculatorWindow.swift - tránh toán tử - trên UIWindow.Level
+          sed -i '' 's|windowLevel = UIWindow.Level.statusBar - 1|windowLevel = UIWindow.Level(rawValue: UIWindow.Level.statusBar.rawValue - 1)|' Sources/Cardculator/CalculatorWindow.swift
+
+          export THEOS_PACKAGE_SCHEME=rootless
+          make spm
+          make package THEOS_PACKAGE_SCHEME=rootless || true
           
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
