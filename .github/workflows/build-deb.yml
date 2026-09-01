@@ -174,16 +174,15 @@ jobs:
           unset DEVELOPER_DIR
           cd $GITHUB_WORKSPACE
 
+          # Vá CydiaSubstrate.tbd bị sai platform
+          find "$THEOS" -name "CydiaSubstrate.tbd" -exec sed -i '' 's/iOS-simulator/iOS/g' {} \;
+
           sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:14.0|' Makefile
           sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
 
-          # Thêm Comet vào link flags
           echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless' >> Makefile
           echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
           echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet' >> Makefile
-
-          echo "----- Makefile sau khi sửa -----"
-          head -20 Makefile
 
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
