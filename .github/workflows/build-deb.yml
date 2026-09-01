@@ -207,9 +207,31 @@ jobs:
             sed -i '' 's|iPhoneOS[0-9.]*\.sdk|iPhoneOS18.4.sdk|g' "$mk"
           done
           
-          echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless' >> Makefile
+          echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore' >> Makefile
           echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
           echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet' >> Makefile
+
+          # prefs.bundle cũng dùng SwiftUI -> cũng bị link cứng vào SwiftUICore, cần weak-link luôn
+          PREFS_MK=$(find . -path "*/prefs/Makefile" | head -1)
+          if [ -n "$PREFS_MK" ]; then
+            echo "Patching $PREFS_MK for weak SwiftUICore link"
+            # thêm dòng LDFLAGS vào Makefile của subproject prefs — thay <InstanceName> bằng tên biến thật trong file đó
+            PREFS_MK=$(find . -path "*/prefs/Makefile" | head -1)
+            if [ -n "$PREFS_MK" ]; then
+              echo "----- Nội dung $PREFS_MK -----"
+              cat "$PREFS_MK"
+
+              INSTANCE=$(grep -oE '^[A-Za-z0-9_]+_FILES' "$PREFS_MK" | head -1 | sed 's/_FILES$//')
+              echo "Detected prefs instance name: $INSTANCE"
+
+              if [ -n "$INSTANCE" ]; then
+                echo "Patching $PREFS_MK for weak SwiftUICore link (instance: $INSTANCE)"
+                echo "${INSTANCE}_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore" >> "$PREFS_MK"
+              else
+                echo "WARNING: could not detect instance name in $PREFS_MK, weak-link NOT applied"
+              fi
+            fi
+          fi
 
           # Bỏ SwiftUI Preview (gây lỗi linker trên device)
           if [ -f Sources/Cardculator/CalculatorView.swift ]; then
