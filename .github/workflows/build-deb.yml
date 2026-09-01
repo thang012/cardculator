@@ -202,27 +202,31 @@ jobs:
           # Vá CalculatorWindow.swift - tránh toán tử - trên UIWindow.Level
           sed -i '' 's|windowLevel = UIWindow.Level.statusBar - 1|windowLevel = UIWindow.Level(rawValue: UIWindow.Level.statusBar.rawValue - 1)|' Sources/Cardculator/CalculatorWindow.swift
 
-          # Vá PreferenceStorage.swift - bỏ UIImpactFeedbackGenerator
-          if [ -f Sources/prefs/Main/PreferenceStorage.swift ]; then
-            echo "----- PreferenceStorage trước khi vá -----"
-            head -25 Sources/prefs/Main/PreferenceStorage.swift
+          # Tìm và vá PreferenceStorage.swift
+          PREF_FILE=$(find . -name "PreferenceStorage.swift" | head -1)
+          echo "Found PreferenceStorage at: $PREF_FILE"
+          if [ -n "$PREF_FILE" ]; then
+            echo "----- trước khi vá -----"
+            head -25 "$PREF_FILE"
 
-            # Thêm import UIKit nếu chưa có
-            if ! grep -q "import UIKit" Sources/prefs/Main/PreferenceStorage.swift; then
-              printf 'import UIKit\n' | cat - Sources/prefs/Main/PreferenceStorage.swift > /tmp/prefs_tmp.swift
-              mv /tmp/prefs_tmp.swift Sources/prefs/Main/PreferenceStorage.swift
+            if ! grep -q "import UIKit" "$PREF_FILE"; then
+              printf 'import UIKit\n' | cat - "$PREF_FILE" > /tmp/prefs_tmp.swift
+              mv /tmp/prefs_tmp.swift "$PREF_FILE"
             fi
 
-            # Thay UIImpactFeedbackGenerator.FeedbackStyle.light.rawValue = 0
-            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' Sources/prefs/Main/PreferenceStorage.swift
-            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.medium\.rawValue|1|g' Sources/prefs/Main/PreferenceStorage.swift
-            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.heavy\.rawValue|2|g' Sources/prefs/Main/PreferenceStorage.swift
+            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' "$PREF_FILE"
+            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.medium\.rawValue|1|g' "$PREF_FILE"
+            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.heavy\.rawValue|2|g' "$PREF_FILE"
+            # Phòng trường hợp viết khác
+            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' "$PREF_FILE"
+            perl -i -pe 's/UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue/0/g' "$PREF_FILE"
 
-            echo "----- PreferenceStorage sau khi vá -----"
-            head -25 Sources/prefs/Main/PreferenceStorage.swift
+            echo "----- sau khi vá -----"
+            head -25 "$PREF_FILE"
+            grep -n "hapticFeedback\|UIImpact\|import UIKit" "$PREF_FILE" || true
           else
-            echo "WARNING: Sources/prefs/Main/PreferenceStorage.swift not found"
-            find Sources -name "*.swift" | head -30
+            echo "ERROR: PreferenceStorage.swift not found anywhere"
+            find . -name "*.swift" | grep -i pref
           fi
           
           export THEOS_PACKAGE_SCHEME=rootless
