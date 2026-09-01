@@ -218,7 +218,13 @@ jobs:
           # -weak_framework SwiftUICore, KHÔNG có rpath -> nếu tweak này (hoặc
           # bất kỳ phần nào của nó chạy ngoài luồng Orion injection) tự load
           # Comet, nó cũng sẽ crash vì cùng lý do với prefs.
-          echo "Cardculator_LDFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -rpath -Xlinker $COMET_RPATH" >> Makefile
+          # -lswiftCoreGraphics: fix cho lỗi runtime dlopen "Symbol not found:
+          # _$s12CoreGraphics7CGFloatVN ... Expected in CoreGraphics.framework".
+          # SDK 18.4 nghĩ symbol Swift-overlay của CGFloat được re-export từ
+          # CoreGraphics.framework (đúng trên iOS mới), nhưng trên 16.7.1 nó vẫn
+          # nằm ở /usr/lib/swift/libswiftCoreGraphics.dylib. Link tường minh vào
+          # đó để linker trỏ đúng chỗ thay vì suy luận sai theo SDK mới.
+          echo "Cardculator_LDFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -rpath -Xlinker $COMET_RPATH -lswiftCoreGraphics" >> Makefile
           echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
           echo "Cardculator_SWIFTFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -framework Comet" >> Makefile
 
@@ -237,6 +243,10 @@ jobs:
               if [ -n "$INSTANCE" ]; then
                 echo "Patching $PREFS_MK for weak SwiftUICore link + rpath (instance: $INSTANCE)"
                 echo "${INSTANCE}_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore" >> "$PREFS_MK"
+                # FIX symbol CGFloat: link tuong minh libswiftCoreGraphics (giai
+                # thich o buoc build Cardculator phia duoi) - sua loi dlopen
+                # "_$s12CoreGraphics7CGFloatVN not found" gap trong prefs.bundle.
+                echo "${INSTANCE}_LDFLAGS += -lswiftCoreGraphics" >> "$PREFS_MK"
                 # ĐÂY LÀ FIX CHÍNH cho crash "Settings văng khi mở cài đặt tweak":
                 # thêm LC_RPATH trỏ đúng chỗ Sileo cài Comet trên máy rootless.
                 echo "${INSTANCE}_LDFLAGS += -Xlinker -rpath -Xlinker $COMET_RPATH" >> "$PREFS_MK"
