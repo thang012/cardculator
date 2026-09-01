@@ -49,15 +49,14 @@ jobs:
       # ---------- Build Comet (thư viện SwiftUI cho preferences) ----------
       - name: Clone and build Comet
         run: |
+          unset DEVELOPER_DIR
+          echo "Active Xcode: $(xcode-select -p)"
           mkdir -p $HOME/developer
           cd $HOME/developer
           git clone https://github.com/ginsudev/Comet.git
           cd Comet
           make spm
           make package ROOTLESS=true
-
-      - name: Verify Comet installed
-        run: ls "$THEOS/lib/iphone/rootless/" | grep -i comet
 
       # ---------- Thêm RemoteLog.h ----------
       - name: Add RemoteLog.h
@@ -68,6 +67,7 @@ jobs:
       # ---------- Build Cardculator ----------
       - name: Build Cardculator .deb
         run: |
+          unset DEVELOPER_DIR
           cd $GITHUB_WORKSPACE
           make spm
           make do THEOS_PACKAGE_SCHEME=rootless || true
