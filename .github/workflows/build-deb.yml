@@ -97,23 +97,10 @@ jobs:
           }
           EOF
 
-          python3 -c '
-          with open("Sources/Comet/Core/Service/ApplicationWorkspace.swift") as f:
-              content = f.read()
-          old = """            guard let proxies = LSApplicationWorkspace.default().allApplications() else {
-                completion([])
-                return
-            }"""
-          new = """            let proxies = LSApplicationWorkspace.default().allApplications()
-            if proxies.isEmpty {
-                completion([])
-                return
-            }"""
-          content = content.replace(old, new)
-          with open("Sources/Comet/Core/Service/ApplicationWorkspace.swift", "w") as f:
-              f.write(content)
-          print("Patched ApplicationWorkspace.swift")
-          '
+          # Vá ApplicationWorkspace.swift (cách chắc chắn)
+          sed -i '' \
+            -e 's/guard let proxies = LSApplicationWorkspace.default().allApplications() else {/let proxies = LSApplicationWorkspace.default().allApplications()\n            if proxies.isEmpty {/' \
+            Sources/Comet/Core/Service/ApplicationWorkspace.swift
 
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
