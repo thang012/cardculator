@@ -1,353 +1,375 @@
-name: Build Cardculator .deb
+name: Build Cardculator 2.1.1
 
 on:
-  workflow_dispatch:   # cho phép bấm nút "Run workflow" thủ công trên GitHub
+  workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: macos-15
 
     steps:
-      - name: Checkout Cardculator source
+      - name: Checkout Cardculator
         uses: actions/checkout@v4
 
-      - name: List available Xcode versions
-        run: ls /Applications | grep -i xcode
+      # Cardculator/Comet 1.0.5 were built with the Xcode 15.4-era
+      # Theos/Swift environment. Comet 1.0.5 itself contains a hardcoded
+      # Xcode-15.4.0.app path.
+      - name: Select Xcode 15.4
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "15.4"
 
-      - name: Select and pin correct Xcode
+      - name: Show Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode.app
-          echo "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer" >> $GITHUB_ENV
+          xcode-select -p
           xcodebuild -version
+          swift --version
 
-      # Theos có một tham chiếu cứng tới đường dẫn Xcode-15.4.0.app ở đâu đó
-      # trong quá trình build swift-support. Tạo symlink giả để thoả điều kiện đó.
-      - name: Workaround hardcoded Xcode-15.4.0.app path
-        run: |
-          sudo ln -sf /Applications/Xcode.app /Applications/Xcode-15.4.0.app
-          ls -la /Applications/Xcode-15.4.0.app
-
-      # ---------- Cài Theos ----------
+      # ------------------------------------------------------------
+      # THEOS
+      # ------------------------------------------------------------
       - name: Install Theos
+        shell: bash
         run: |
-          export THEOS=$HOME/theos
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          echo "THEOS=$THEOS" >> $GITHUB_ENV
+          set -e
 
-      - name: Switch Theos to orion branch
-        run: |
-          cd $THEOS
-          git fetch && git checkout orion && git submodule update --init
+          export THEOS="$HOME/theos"
 
-      # ---------- Tải iPhoneOS SDK hiện đại (khớp Swift compiler của Xcode 16.4) ----------
-      - name: Download iPhoneOS18.4.sdk
+          git clone --recursive \
+            --branch orion \
+            https://github.com/theos/theos.git \
+            "$THEOS"
+
+          cd "$THEOS"
+
+          git submodule update --init --recursive
+
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+
+          echo "Theos:"
+          git rev-parse HEAD
+
+      # ------------------------------------------------------------
+      # iPhoneOS 16.4 SDK
+      #
+      # Cardculator's original Makefiles explicitly target 16.4.
+      # Do not rewrite them to SDK 18.4/15.0.
+      # ------------------------------------------------------------
+      - name: Install iPhoneOS 16.4 SDK
+        shell: bash
         run: |
+          set -e
+
           mkdir -p "$THEOS/sdks"
-          curl -L -o /tmp/iPhoneOS18.4.sdk.zip \
-            "https://github.com/xybp888/iOS-SDKs/releases/download/iOS18.4-SDKs/iPhoneOS18.4.sdk.zip"
-          unzip -q /tmp/iPhoneOS18.4.sdk.zip -d "$THEOS/sdks"
-          echo "----- Nội dung $THEOS/sdks -----"
-          ls -la "$THEOS/sdks"
-          du -sh "$THEOS/sdks"/iPhoneOS18.4.sdk
 
-      # ---------- Build Comet (thư viện SwiftUI cho preferences) ----------
-      - name: Clone and build Comet
+          curl -L \
+            --fail \
+            --retry 3 \
+            -o /tmp/iPhoneOS16.4.sdk.zip \
+            "https://github.com/xybp888/iOS-SDKs/releases/download/iOS16.4-SDKs/iPhoneOS16.4.sdk.zip"
+
+          unzip -q \
+            /tmp/iPhoneOS16.4.sdk.zip \
+            -d "$THEOS/sdks"
+
+          test -d "$THEOS/sdks/iPhoneOS16.4.sdk"
+
+          echo "Installed SDK:"
+          ls -ld "$THEOS/sdks/iPhoneOS16.4.sdk"
+
+      # ------------------------------------------------------------
+      # COMET 1.0.5
+      #
+      # Exact upstream commit:
+      # 8f70074 = "rootless fix"
+      #
+      # This commit's Makefile already supports:
+      # ROOTLESS=1
+      # /var/jb/Library/Frameworks
+      # PACKAGE_VERSION=1.0.5
+      # ------------------------------------------------------------
+      - name: Build Comet 1.0.5 rootless
+        shell: bash
         run: |
-          unset DEVELOPER_DIR
-          echo "Active Xcode: $(xcode-select -p)"
+          set -e
 
-          # Cài ldid để ký framework
           brew install ldid
 
-          mkdir -p $HOME/developer
-          cd $HOME/developer
-          git clone https://github.com/ginsudev/Comet.git
-          cd Comet
+          mkdir -p "$HOME/developer"
 
-          # SDK 18.4, deployment target 15.0 (máy test chạy iOS 16.7.1,
-          # Havoc public tối đa iOS 16.7.5 -> hạ target sát hơn để giảm
-          # nguy cơ thiếu symbol Swift overlay so với target 14.5 cũ)
-          sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:15.0|' Makefile
+          git clone \
+            https://github.com/ginsudev/Comet.git \
+            "$HOME/developer/Comet"
 
-          # Comet cũng dùng SwiftUI -> weak-link SwiftUICore và CoreGraphics
-          # để tránh lỗi "Symbol not found" trên các máy chạy iOS thấp hơn
-          # phiên bản mà SDK 18.4 mặc định trỏ tới.
-          echo 'Comet_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
-          echo 'Comet_SWIFTFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
+          cd "$HOME/developer/Comet"
 
-          cat > Sources/CometC/include/LSApplicationWorkspace.h << 'EOF'
-          #import <Foundation/Foundation.h>
-          NS_ASSUME_NONNULL_BEGIN
-          @interface LSApplicationRecord : NSObject
-          @property (readonly) NSArray<NSString *> * appTags;
-          @property (getter=isLaunchProhibited,readonly) BOOL launchProhibited;
-          @end
-          @interface LSApplicationProxy : NSObject
-          @property (nonatomic,readonly) LSApplicationRecord * correspondingApplicationRecord;
-          @property (nonatomic,readonly) NSString * applicationType;
-          @property (nonatomic,readonly) NSString * applicationIdentifier;
-          @property (nonatomic,readonly) NSString * localizedName;
-          @property (nonatomic,readonly) NSURL * bundleURL;
-          + (instancetype)applicationProxyForIdentifier:(NSString *)identifier;
-          @end
-          @interface LSApplicationWorkspace : NSObject
-          + (instancetype)defaultWorkspace;
-          - (NSArray<LSApplicationProxy *> *)allApplications;
-          - (NSArray<LSApplicationProxy *> *)allInstalledApplications;
-          - (BOOL)openApplicationWithBundleID:(NSString *)bundleID;
-          @end
-          NS_ASSUME_NONNULL_END
-          EOF
+          git checkout 8f70074
 
-          cat > Sources/Comet/Core/Extensions/Bundle+Comet.swift << 'EOF'
-          import Foundation
-          internal extension Bundle {
-              static var comet: Bundle {
-                  Bundle(path: "/var/jb/Library/Frameworks/Comet.framework/Bundle.bundle/")!
-              }
-          }
-          EOF
+          echo "Comet commit:"
+          git rev-parse HEAD
 
-          sed -i '' \
-            -e 's/guard let proxies = LSApplicationWorkspace.default().allApplications() else {/let proxies = LSApplicationWorkspace.default().allApplications()\n            if proxies.isEmpty {/' \
-            Sources/Comet/Core/Service/ApplicationWorkspace.swift
+          echo "Comet Makefile:"
+          sed -n '1,60p' Makefile
 
-          cat > Sources/Comet/Core/Extensions/Color+Hex.swift << 'EOF'
-          import SwiftUI
-          import UIKit
+          # Verify that this really is the 1.0.5 source.
+          grep -q 'PACKAGE_VERSION = 1.0.5' Makefile
 
-          public extension Color {
-              func toHex() -> String {
-                  let uiColor = UIColor(self)
-                  var r: CGFloat = 0
-                  var g: CGFloat = 0
-                  var b: CGFloat = 0
-                  var a: CGFloat = 0
-                  uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
-                  let rgb: Int = (Int)(r * 255) << 16 | (Int)(g * 255) << 8 | (Int)(b * 255) << 0
-                  return String(format: "#%06x", rgb)
-              }
+          # Comet 1.0.5 expects the Xcode-15.4.0.app path.
+          # setup-xcode selected Xcode 15.4; create the exact path.
+          sudo ln -sfn \
+            "$(xcode-select -p | sed 's|/Contents/Developer$||')" \
+            /Applications/Xcode-15.4.0.app
 
-              init(hex: String) {
-                  let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-                  var int: UInt64 = 0
-                  Scanner(string: hex).scanHexInt64(&int)
-                  let a, r, g, b: UInt64
-                  switch hex.count {
-                  case 3:
-                      (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-                  case 6:
-                      (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-                  case 8:
-                      (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-                  default:
-                      (a, r, g, b) = (255, 0, 0, 0)
-                  }
-                  self.init(
-                      .sRGB,
-                      red: Double(r) / 255,
-                      green: Double(g) / 255,
-                      blue: Double(b) / 255,
-                      opacity: Double(a) / 255
-                  )
-              }
-          }
-          EOF
+          test -d /Applications/Xcode-15.4.0.app
 
+          # Build the actual rootless Comet framework/package.
+          #
+          # IMPORTANT:
+          # ROOTLESS=1 is required by Comet 1.0.5.
+          # Merely setting THEOS_PACKAGE_SCHEME=rootless is NOT enough.
+          export ROOTLESS=1
           export THEOS_PACKAGE_SCHEME=rootless
-          make package
 
-          # Chỉ dùng Comet.framework làm dependency lúc build Cardculator.
-          # Không package Comet vào Cardculator.
-          mkdir -p "$THEOS/lib/iphone/rootless"
+          make clean || true
 
-          COMET_FW=$(find "$HOME/developer/Comet" -name "Comet.framework" -type d | head -1)
+          make package \
+            ROOTLESS=1 \
+            FINALPACKAGE=1
 
-          find "$HOME/developer/Comet" -name "*.framework" -type d
+          echo "Comet packages:"
+          find packages -type f -name '*.deb' -print
 
-          if [ -z "$COMET_FW" ]; then
-              echo "ERROR: Comet.framework not found"
-              exit 1
-          fi
+          # Comet 1.0.5's rootless build copies its framework into
+          # THEOS/lib/iphone/rootless automatically.
+          echo "Theos Comet framework:"
+          find "$THEOS/lib/iphone/rootless" \
+            -maxdepth 2 \
+            -name 'Comet.framework' \
+            -print
 
-          echo "Found Comet.framework:"
-          echo "$COMET_FW"
+          COMET_FW="$THEOS/lib/iphone/rootless/Comet.framework"
 
-          rm -rf "$THEOS/lib/iphone/rootless/Comet.framework"
-          cp -R "$COMET_FW" "$THEOS/lib/iphone/rootless/"
+          test -d "$COMET_FW"
+          test -f "$COMET_FW/Comet"
 
-          # Kiểm tra binary Comet
-          echo "----- Comet binary dependencies -----"
-          otool -L "$THEOS/lib/iphone/rootless/Comet.framework/Comet" || true
-          echo "----- Comet load commands (weak vs required) -----"
-          otool -l "$THEOS/lib/iphone/rootless/Comet.framework/Comet" | grep -B2 -A5 "SwiftUICore\|CoreGraphics" || true
-          ls -la "$THEOS/lib/iphone/rootless/" || true
-          ls -la "$THEOS/lib/" | grep -i comet || true
+          echo "----- Comet binary -----"
+          file "$COMET_FW/Comet"
 
-      # ---------- Thêm RemoteLog.h ----------
-      - name: Add RemoteLog.h
+          echo "----- Comet dependencies -----"
+          otool -L "$COMET_FW/Comet"
+
+          echo "----- Comet install name -----"
+          otool -D "$COMET_FW/Comet" || true
+
+      # ------------------------------------------------------------
+      # RemoteLog.h
+      # ------------------------------------------------------------
+      - name: Install RemoteLog.h
+        shell: bash
         run: |
-          curl -L -o "$THEOS/include/RemoteLog.h" \
+          set -e
+
+          curl -L \
+            --fail \
+            --retry 3 \
+            -o "$THEOS/include/RemoteLog.h" \
             https://raw.githubusercontent.com/Muirey03/RemoteLog/master/RemoteLog.h
 
-      # ---------- Build Cardculator ----------
-      - name: Build Cardculator .deb
+          test -f "$THEOS/include/RemoteLog.h"
+
+      # ------------------------------------------------------------
+      # VERIFY ORIGINAL MAKEFILES
+      #
+      # We intentionally do NOT globally rewrite deployment targets.
+      # ------------------------------------------------------------
+      - name: Verify Cardculator Makefiles
+        shell: bash
         run: |
-          unset DEVELOPER_DIR
-          cd $GITHUB_WORKSPACE
+          set -e
 
-          # Vá CydiaSubstrate.tbd - bỏ arch simulator
-          find "$THEOS" -name "CydiaSubstrate.tbd" | while read tbd; do
-            echo "Fixing $tbd"
-            sed -i '' 's/, i386, x86_64//' "$tbd"
-            sed -i '' 's/, i386//' "$tbd"
-            sed -i '' 's/, x86_64//' "$tbd"
-            sed -i '' 's/platform: ios$/platform: iphoneos/' "$tbd"
-            head -8 "$tbd"
-          done
+          echo "===== Root Makefile ====="
+          cat Makefile
 
-          # SDK 18.4, deployment target 15.0 (thay vì 14.0) -
-          # máy test chạy iOS 16.7.1, Havoc public tối đa 16.7.5.
-          # Target 14.0 quá xa so với SDK 18.4 gây thiếu symbol Swift
-          # overlay (vd. CGFloat trong CoreGraphics) trên máy thật.
-          sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:15.0|' Makefile
-          sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
+          echo "===== prefs/Makefile ====="
+          cat prefs/Makefile
 
-          # Vá tất cả Makefile con (prefs, cardculatorccmodule, ...)
-          find . -name "Makefile" | while read mk; do
-            echo "Patching $mk"
-            sed -i '' 's|iphone:clang:[0-9.]*:[0-9.]*|iphone:clang:18.4:15.0|g' "$mk"
-            sed -i '' 's|iPhoneOS[0-9.]*\.sdk|iPhoneOS18.4.sdk|g' "$mk"
-          done
+          echo "===== cardculatorccmodule/Makefile ====="
+          cat cardculatorccmodule/Makefile
 
-          echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
-          echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
-          echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
+          echo "===== control ====="
+          cat control
 
-          # prefs.bundle cũng dùng SwiftUI -> cũng bị link cứng vào
-          # SwiftUICore và CoreGraphics, cần weak-link cả hai.
-          PREFS_MK=$(find . -path "*/prefs/Makefile" | head -1)
-          if [ -n "$PREFS_MK" ]; then
-            echo "Patching $PREFS_MK for weak SwiftUICore/CoreGraphics link"
-            echo "----- Nội dung $PREFS_MK -----"
-            cat "$PREFS_MK"
+          grep -q 'Version: 2.1.1' control
+          grep -q 'com.ginsu.comet' control
 
-            INSTANCE=$(grep -oE '^[A-Za-z0-9_]+_FILES' "$PREFS_MK" | head -1 | sed 's/_FILES$//')
-            echo "Detected prefs instance name: $INSTANCE"
+      # ------------------------------------------------------------
+      # BUILD CARDculator
+      # ------------------------------------------------------------
+      - name: Build Cardculator
+        shell: bash
+        run: |
+          set -e
 
-            if [ -n "$INSTANCE" ]; then
-              echo "Patching $PREFS_MK for weak SwiftUICore/CoreGraphics link (instance: $INSTANCE)"
-              echo "${INSTANCE}_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics" >> "$PREFS_MK"
-            else
-              echo "WARNING: could not detect instance name in $PREFS_MK, weak-link NOT applied"
-            fi
-          fi
-
-          # Bỏ SwiftUI Preview (gây lỗi linker trên device)
-          if [ -f Sources/Cardculator/CalculatorView.swift ]; then
-            # Xóa từ dòng #Preview hoặc struct ..._Previews trở đi
-            sed -i '' '/#Preview/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
-            sed -i '' '/struct CalculatorView_Previews/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
-            sed -i '' '/PreviewProvider/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
-          fi
-
-          # Vá CalculatorWindow.swift - tránh toán tử - trên UIWindow.Level
-          sed -i '' 's|windowLevel = UIWindow.Level.statusBar - 1|windowLevel = UIWindow.Level(rawValue: UIWindow.Level.statusBar.rawValue - 1)|' Sources/Cardculator/CalculatorWindow.swift
-
-          # Tìm và vá PreferenceStorage.swift
-          PREF_FILE=$(find . -name "PreferenceStorage.swift" | head -1)
-          echo "Found PreferenceStorage at: $PREF_FILE"
-          if [ -n "$PREF_FILE" ]; then
-            echo "----- trước khi vá -----"
-            head -25 "$PREF_FILE"
-
-            if ! grep -q "import UIKit" "$PREF_FILE"; then
-              printf 'import UIKit\n' | cat - "$PREF_FILE" > /tmp/prefs_tmp.swift
-              mv /tmp/prefs_tmp.swift "$PREF_FILE"
-            fi
-
-            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' "$PREF_FILE"
-            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.medium\.rawValue|1|g' "$PREF_FILE"
-            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.heavy\.rawValue|2|g' "$PREF_FILE"
-            # Phòng trường hợp viết khác
-            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' "$PREF_FILE"
-            perl -i -pe 's/UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue/0/g' "$PREF_FILE"
-
-            echo "----- sau khi vá -----"
-            head -25 "$PREF_FILE"
-            grep -n "hapticFeedback\|UIImpact\|import UIKit" "$PREF_FILE" || true
-          else
-            echo "ERROR: PreferenceStorage.swift not found anywhere"
-            find . -name "*.swift" | grep -i pref
-          fi
-
-          PREF_BIN=$(find . -path "*prefs.bundle/prefs" -type f | head -1)
-
-          echo "prefs binary: $PREF_BIN"
-
-          if [ -n "$PREF_BIN" ]; then
-              echo "----- BEFORE -----"
-              otool -L "$PREF_BIN"
-
-              install_name_tool \
-                  -change "/Library/Frameworks/Comet.framework/Comet" \
-                  "@rpath/Comet.framework/Comet" \
-                  "$PREF_BIN"
-
-              echo "----- AFTER -----"
-              otool -L "$PREF_BIN"
-          fi
+          cd "$GITHUB_WORKSPACE"
 
           export THEOS_PACKAGE_SCHEME=rootless
+
+          # Clean anything generated by previous attempts.
+          make clean || true
+
+          # Generate the Theos Swift Package Manager configuration.
           make spm
-          make THEOS_PACKAGE_SCHEME=rootless
 
-          echo "=========================================="
-          echo "Checking Cardculator preference bundle"
-          echo "=========================================="
+          echo "===== .theos/spm_config ====="
+          cat .theos/spm_config
 
-          PREF_BIN=$(find . -path "*/prefs.bundle/prefs" -type f | head -1)
+          # Build all three components:
+          #   Cardculator
+          #   prefs
+          #   CardculatorCCModule
+          make \
+            THEOS_PACKAGE_SCHEME=rootless \
+            FINALPACKAGE=1
+
+      # ------------------------------------------------------------
+      # INSPECT prefs.bundle BEFORE PACKAGING
+      # ------------------------------------------------------------
+      - name: Verify prefs.bundle
+        shell: bash
+        run: |
+          set -e
+
+          PREF_BIN=$(find . \
+            -path '*prefs.bundle/prefs' \
+            -type f \
+            -print -quit)
 
           if [ -z "$PREF_BIN" ]; then
-              echo "ERROR: prefs binary not found"
-              find . -name "prefs" -type f
-              exit 1
+            echo "ERROR: prefs binary was not produced."
+            find . -name '*.bundle' -print
+            exit 1
           fi
 
           echo "prefs binary:"
           echo "$PREF_BIN"
 
-          echo "----- BEFORE -----"
+          echo "===== prefs file ====="
+          file "$PREF_BIN"
+
+          echo "===== prefs dependencies ====="
           otool -L "$PREF_BIN"
 
-          # Fix absolute/rootful Comet path -> rootless rpath
-          if otool -L "$PREF_BIN" | grep -q "/Library/Frameworks/Comet.framework/Comet"; then
-              echo "Fixing rootful Comet dependency..."
+          echo "===== prefs load commands ====="
+          otool -l "$PREF_BIN" | \
+            grep -A8 -B2 \
+            -E 'LC_LOAD_DYLIB|LC_RPATH|Comet.framework' \
+            || true
 
-              install_name_tool \
-                  -change "/Library/Frameworks/Comet.framework/Comet" \
-                  "@rpath/Comet.framework/Comet" \
-                  "$PREF_BIN"
+          echo "===== Verify Comet dependency ====="
+
+          if otool -L "$PREF_BIN" | \
+             grep -q '/var/jb/Library/Frameworks/Comet.framework/Comet'
+          then
+            echo "OK: prefs uses rootless Comet path."
+          else
+            echo "WARNING: prefs does not contain the expected rootless Comet path."
+            otool -L "$PREF_BIN"
           fi
 
-          echo "----- AFTER -----"
-          otool -L "$PREF_BIN"
+      # ------------------------------------------------------------
+      # PACKAGE
+      # ------------------------------------------------------------
+      - name: Package Cardculator rootless
+        shell: bash
+        run: |
+          set -e
 
-          echo "----- RPATH -----"
-          otool -l "$PREF_BIN" | grep -A2 -B1 LC_RPATH || true
+          export THEOS_PACKAGE_SCHEME=rootless
 
-          echo "----- LOAD COMMANDS: SwiftUICore / CoreGraphics (kiểm tra weak vs required) -----"
-          otool -l "$PREF_BIN" | grep -B2 -A5 "SwiftUICore\|CoreGraphics" || true
+          make package \
+            THEOS_PACKAGE_SCHEME=rootless \
+            FINALPACKAGE=1
 
-          make package THEOS_PACKAGE_SCHEME=rootless
+          echo "===== Generated packages ====="
+          find packages \
+            -maxdepth 1 \
+            -type f \
+            -name '*.deb' \
+            -print
 
-      - name: Locate .deb output
-        run: find . -name "*.deb"
+          CARD_DEB=$(find packages \
+            -maxdepth 1 \
+            -type f \
+            -name '*.deb' \
+            -print \
+            | grep -v 'com.ginsu.comet' \
+            | head -1)
 
-      - name: Upload .deb artifact
+          if [ -z "$CARD_DEB" ]; then
+            echo "ERROR: Cardculator .deb not found."
+            exit 1
+          fi
+
+          echo "Cardculator package:"
+          echo "$CARD_DEB"
+
+      # ------------------------------------------------------------
+      # FINAL PACKAGE INSPECTION
+      # ------------------------------------------------------------
+      - name: Inspect final .deb
+        shell: bash
+        run: |
+          set -e
+
+          CARD_DEB=$(find packages \
+            -maxdepth 1 \
+            -type f \
+            -name '*.deb' \
+            -print \
+            | grep -v 'com.ginsu.comet' \
+            | head -1)
+
+          echo "===== DEB CONTROL ====="
+          dpkg-deb -I "$CARD_DEB"
+
+          echo "===== DEB CONTENTS ====="
+          dpkg-deb -c "$CARD_DEB"
+
+          echo "===== Verify required bundles ====="
+
+          dpkg-deb -c "$CARD_DEB" | grep -q \
+            'Library/PreferenceBundles/prefs.bundle'
+
+          dpkg-deb -c "$CARD_DEB" | grep -q \
+            'Library/ControlCenter/Bundles/CardculatorCCModule.bundle'
+
+          dpkg-deb -c "$CARD_DEB" | grep -q \
+            'Library/MobileSubstrate/DynamicLibraries/Cardculator.dylib' \
+            || \
+          dpkg-deb -c "$CARD_DEB" | grep -q \
+            'Library/MobileSubstrate/DynamicLibraries/Cardculator.bundle'
+
+          echo "Required Cardculator components found."
+
+      # ------------------------------------------------------------
+      # UPLOAD
+      # ------------------------------------------------------------
+      - name: Upload Cardculator .deb
         uses: actions/upload-artifact@v4
         with:
-          name: cardculator-deb
+          name: Cardculator-2.1.1-rootless
           path: packages/*.deb
+          if-no-files-found: error
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cardculator-build-diagnostics
+          path: |
+            packages/*.deb
+            .theos/**
+          if-no-files-found: ignore
