@@ -202,18 +202,28 @@ jobs:
           # Vá CalculatorWindow.swift - tránh toán tử - trên UIWindow.Level
           sed -i '' 's|windowLevel = UIWindow.Level.statusBar - 1|windowLevel = UIWindow.Level(rawValue: UIWindow.Level.statusBar.rawValue - 1)|' Sources/Cardculator/CalculatorWindow.swift
 
-          # Vá prefs - thêm import UIKit nếu chưa có
+          # Vá PreferenceStorage.swift - bỏ UIImpactFeedbackGenerator
           if [ -f Sources/prefs/Main/PreferenceStorage.swift ]; then
+            echo "----- PreferenceStorage trước khi vá -----"
+            head -25 Sources/prefs/Main/PreferenceStorage.swift
+
+            # Thêm import UIKit nếu chưa có
             if ! grep -q "import UIKit" Sources/prefs/Main/PreferenceStorage.swift; then
-              sed -i '' '1i\
-          import UIKit
-          ' Sources/prefs/Main/PreferenceStorage.swift
+              printf 'import UIKit\n' | cat - Sources/prefs/Main/PreferenceStorage.swift > /tmp/prefs_tmp.swift
+              mv /tmp/prefs_tmp.swift Sources/prefs/Main/PreferenceStorage.swift
             fi
+
+            # Thay UIImpactFeedbackGenerator.FeedbackStyle.light.rawValue = 0
+            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.light\.rawValue|0|g' Sources/prefs/Main/PreferenceStorage.swift
+            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.medium\.rawValue|1|g' Sources/prefs/Main/PreferenceStorage.swift
+            sed -i '' 's|UIImpactFeedbackGenerator\.FeedbackStyle\.heavy\.rawValue|2|g' Sources/prefs/Main/PreferenceStorage.swift
+
+            echo "----- PreferenceStorage sau khi vá -----"
+            head -25 Sources/prefs/Main/PreferenceStorage.swift
+          else
+            echo "WARNING: Sources/prefs/Main/PreferenceStorage.swift not found"
+            find Sources -name "*.swift" | head -30
           fi
-          
-          export THEOS_PACKAGE_SCHEME=rootless
-          make spm
-          make package THEOS_PACKAGE_SCHEME=rootless || true
           
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
