@@ -95,14 +95,22 @@ jobs:
           NS_ASSUME_NONNULL_END
           EOF
 
-          # Cài libroot (cần cho rootless)
-          git clone https://github.com/opa334/libroot.git $THEOS/libroot
-          mkdir -p $THEOS/lib/iphone/rootless
-          cp -r $THEOS/libroot/libroot.framework $THEOS/lib/iphone/rootless/ 2>/dev/null || true
+          # Vá Bundle+Comet.swift - bỏ import libroot, hardcode path rootless
+          cat > Sources/Comet/Core/Extensions/Bundle+Comet.swift << 'EOF'
+          //
+          //  Bundle+Comet.swift
+          //  Comet
+          //
 
-          # Thêm flag để tìm thấy libroot
-          echo 'Comet_LDFLAGS += -F$(THEOS)/lib/iphone/rootless' >> Makefile
-          echo 'Comet_FRAMEWORKS += libroot' >> Makefile
+          import Foundation
+
+          internal extension Bundle {
+              static var comet: Bundle {
+                  // Hardcode path cho rootless (tránh phụ thuộc libroot module)
+                  Bundle(path: "/var/jb/Library/Frameworks/Comet.framework/Bundle.bundle/")!
+              }
+          }
+          EOF
 
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
