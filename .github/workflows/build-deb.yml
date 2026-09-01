@@ -66,7 +66,7 @@ jobs:
           git clone https://github.com/ginsudev/Comet.git
           cd Comet
 
-          sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:14.5|' Makefile
+          sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:15.0|' Makefile
 
           cat > Sources/CometC/include/LSApplicationWorkspace.h << 'EOF'
           #import <Foundation/Foundation.h>
@@ -204,13 +204,13 @@ jobs:
             head -8 "$tbd"
           done
 
-          sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:14.0|' Makefile
+          sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:15.0|' Makefile
           sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
 
           # Vá tất cả Makefile con (prefs, cardculatorccmodule, ...)
           find . -name "Makefile" | while read mk; do
             echo "Patching $mk"
-            sed -i '' 's|iphone:clang:[0-9.]*:[0-9.]*|iphone:clang:18.4:14.0|g' "$mk"
+            sed -i '' 's|iphone:clang:[0-9.]*:[0-9.]*|iphone:clang:18.4:15.0|g' "$mk"
             sed -i '' 's|iPhoneOS[0-9.]*\.sdk|iPhoneOS18.4.sdk|g' "$mk"
           done
 
