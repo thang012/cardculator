@@ -126,10 +126,6 @@ jobs:
           echo "       DOWNLOAD iPhoneOS 16.4 SDK"
           echo "=========================================="
 
-          svn export \
-            https://github.com/xybp888/iOS-SDKs/trunk/iPhoneOS16.4.sdk \
-            "$SDK_TMP"
-
           echo
           echo "Downloaded SDK:"
           ls -ld "$SDK_TMP"
