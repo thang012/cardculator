@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-13   # cần Xcode cũ (14.x) để tương thích SDK patched cũ
+    runs-on: macos-15
 
     steps:
       - name: Checkout Cardculator source
