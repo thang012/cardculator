@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15   # macOS runner có sẵn Xcode mới
+    runs-on: macos-13   # cần Xcode cũ (14.x) để tương thích SDK patched cũ
 
     steps:
       - name: Checkout Cardculator source
@@ -41,15 +41,17 @@ jobs:
           cd $THEOS
           git fetch && git checkout orion && git submodule update --init
 
-      # ---------- Tải iPhoneOS SDK cho Theos ----------
-      - name: Download iPhoneOS SDKs
+      # ---------- Tải iPhoneOS SDK hiện đại (khớp Swift compiler của Xcode 16.4) ----------
+      - name: Download modern iPhoneOS SDK (sparse checkout)
         run: |
           mkdir -p "$THEOS/sdks"
-          for ver in 14.5 15.6 16.5; do
-            curl -L -o "/tmp/iPhoneOS${ver}.sdk.tar.xz" \
-              "https://github.com/theos/sdks/releases/latest/download/iPhoneOS${ver}.sdk.tar.xz"
-            tar -xf "/tmp/iPhoneOS${ver}.sdk.tar.xz" -C "$THEOS/sdks"
-          done
+          git clone --filter=blob:none --no-checkout --depth 1 \
+            https://github.com/xybp888/iOS-SDKs.git /tmp/ios-sdks
+          cd /tmp/ios-sdks
+          git sparse-checkout init --cone
+          git sparse-checkout set iPhoneOS18.4.sdk
+          git checkout master
+          mv iPhoneOS18.4.sdk "$THEOS/sdks/"
           echo "----- Nội dung $THEOS/sdks -----"
           ls -la "$THEOS/sdks"
 
