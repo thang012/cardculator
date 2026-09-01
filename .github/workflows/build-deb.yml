@@ -162,10 +162,18 @@ jobs:
         run: |
           unset DEVELOPER_DIR
           cd $GITHUB_WORKSPACE
+
+          # Sửa TARGET sang SDK 18.4 (nếu có)
+          if grep -q "TARGET.*iphone:clang" Makefile; then
+            sed -i '' 's|TARGET = iphone:clang:[0-9.]*:[0-9.]*|TARGET = iphone:clang:18.4:14.5|' Makefile
+          fi
+
+          # Nếu Makefile dùng biến khác
+          sed -i '' 's|iphone:clang:16\.[0-9]*|iphone:clang:18.4|g' Makefile || true
+
           make spm
-          make do THEOS_PACKAGE_SCHEME=rootless || true
-          # 'make do' báo lỗi thiếu THEOS_DEVICE_IP là bình thường —
-          # nghĩa là build .deb đã thành công, chỉ là bước cài lên máy bị bỏ qua.
+          make package THEOS_PACKAGE_SCHEME=rootless || true
+          # dùng make package thay vì make do để tránh lỗi THEOS_DEVICE_IP
 
       - name: Locate .deb output
         run: find . -name "*.deb"
