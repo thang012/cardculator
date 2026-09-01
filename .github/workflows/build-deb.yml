@@ -151,6 +151,17 @@ jobs:
           make spm
           make package ROOTLESS=true
 
+          # Copy Comet.framework vào đúng chỗ rootless
+          mkdir -p "$THEOS/lib/iphone/rootless"
+          cp -R "$THEOS/lib/Comet.framework" "$THEOS/lib/iphone/rootless/" 2>/dev/null || true
+          # Nếu Comet cài vào staging thì tìm và copy
+          find "$HOME/developer/Comet" -name "Comet.framework" -type d | head -1 | while read fw; do
+            cp -R "$fw" "$THEOS/lib/iphone/rootless/"
+            cp -R "$fw" "$THEOS/lib/"
+          done
+          ls -la "$THEOS/lib/iphone/rootless/" || true
+          ls -la "$THEOS/lib/" | grep -i comet || true
+          
       # ---------- Thêm RemoteLog.h ----------
       - name: Add RemoteLog.h
         run: |
@@ -166,9 +177,15 @@ jobs:
           sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:14.0|' Makefile
           sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
 
-          echo "----- Makefile sau khi sửa -----"
-          head -10 Makefile
+          # Thêm Comet vào link flags
+          echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless' >> Makefile
+          echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
+          echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet' >> Makefile
 
+          echo "----- Makefile sau khi sửa -----"
+          head -20 Makefile
+
+          export THEOS_PACKAGE_SCHEME=rootless
           make spm
           make package THEOS_PACKAGE_SCHEME=rootless || true
 
