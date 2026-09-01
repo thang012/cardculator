@@ -224,7 +224,7 @@ jobs:
           # CoreGraphics.framework (đúng trên iOS mới), nhưng trên 16.7.1 nó vẫn
           # nằm ở /usr/lib/swift/libswiftCoreGraphics.dylib. Link tường minh vào
           # đó để linker trỏ đúng chỗ thay vì suy luận sai theo SDK mới.
-          echo "Cardculator_LDFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -rpath -Xlinker $COMET_RPATH -lswiftCoreGraphics" >> Makefile
+          echo "Cardculator_LDFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -rpath -Xlinker $COMET_RPATH" >> Makefile
           echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
           echo "Cardculator_SWIFTFLAGS += -F\$(THEOS)/lib -F\$(THEOS)/lib/iphone/rootless -framework Comet" >> Makefile
 
@@ -243,12 +243,6 @@ jobs:
               if [ -n "$INSTANCE" ]; then
                 echo "Patching $PREFS_MK for weak SwiftUICore link + rpath (instance: $INSTANCE)"
                 echo "${INSTANCE}_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore" >> "$PREFS_MK"
-                # FIX symbol CGFloat: link tuong minh libswiftCoreGraphics (giai
-                # thich o buoc build Cardculator phia duoi) - sua loi dlopen
-                # "_$s12CoreGraphics7CGFloatVN not found" gap trong prefs.bundle.
-                echo "${INSTANCE}_LDFLAGS += -lswiftCoreGraphics" >> "$PREFS_MK"
-                # ĐÂY LÀ FIX CHÍNH cho crash "Settings văng khi mở cài đặt tweak":
-                # thêm LC_RPATH trỏ đúng chỗ Sileo cài Comet trên máy rootless.
                 echo "${INSTANCE}_LDFLAGS += -Xlinker -rpath -Xlinker $COMET_RPATH" >> "$PREFS_MK"
               else
                 echo "WARNING: could not detect instance name in $PREFS_MK, weak-link/rpath NOT applied"
@@ -315,6 +309,23 @@ jobs:
           make spm
           make THEOS_PACKAGE_SCHEME=rootless
 
+          # ===== DEBUG CGFloat symbol =====
+          PREF_BIN=$(find . -path "*/prefs.bundle/prefs" -type f | head -1)
+
+          echo "=========================================="
+          echo "CHECK CGFloat SYMBOL"
+          echo "=========================================="
+
+          echo "prefs binary: $PREF_BIN"
+
+          nm -u "$PREF_BIN" | grep 'CoreGraphics.*CGFloat' || true
+
+          echo "----- Swift dependencies -----"
+          otool -L "$PREF_BIN" | grep -E 'swift|CoreGraphics|SwiftUI' || true
+
+          echo "----- Symbol references -----"
+          strings "$PREF_BIN" | grep 'CoreGraphics.*CGFloat' || true
+          
           echo "=========================================="
           echo "Checking Cardculator preference bundle"
           echo "=========================================="
