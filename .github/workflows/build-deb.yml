@@ -191,6 +191,14 @@ jobs:
           echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
           echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet' >> Makefile
 
+          # Bỏ SwiftUI Preview (gây lỗi linker trên device)
+          if [ -f Sources/Cardculator/CalculatorView.swift ]; then
+            # Xóa từ dòng #Preview hoặc struct ..._Previews trở đi
+            sed -i '' '/#Preview/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
+            sed -i '' '/struct CalculatorView_Previews/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
+            sed -i '' '/PreviewProvider/,/^}/d' Sources/Cardculator/CalculatorView.swift || true
+          fi
+          
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
           make package THEOS_PACKAGE_SCHEME=rootless || true
