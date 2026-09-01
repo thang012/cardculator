@@ -202,6 +202,15 @@ jobs:
           # Vá CalculatorWindow.swift - tránh toán tử - trên UIWindow.Level
           sed -i '' 's|windowLevel = UIWindow.Level.statusBar - 1|windowLevel = UIWindow.Level(rawValue: UIWindow.Level.statusBar.rawValue - 1)|' Sources/Cardculator/CalculatorWindow.swift
 
+          # Vá prefs - thêm import UIKit nếu chưa có
+          if [ -f Sources/prefs/Main/PreferenceStorage.swift ]; then
+            if ! grep -q "import UIKit" Sources/prefs/Main/PreferenceStorage.swift; then
+              sed -i '' '1i\
+          import UIKit
+          ' Sources/prefs/Main/PreferenceStorage.swift
+            fi
+          fi
+          
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
           make package THEOS_PACKAGE_SCHEME=rootless || true
