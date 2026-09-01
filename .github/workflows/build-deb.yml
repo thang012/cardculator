@@ -29,13 +29,16 @@ jobs:
           git fetch && git checkout orion && git submodule update --init
 
       # ---------- Tải iPhoneOS SDK cho Theos ----------
-      - name: Download iPhoneOS SDK
+      - name: Download iPhoneOS SDKs
         run: |
           mkdir -p "$THEOS/sdks"
-          curl -L -o /tmp/iPhoneOS.sdk.tar.xz \
-            https://github.com/theos/sdks/releases/latest/download/iPhoneOS15.6.sdk.tar.xz
-          tar -xf /tmp/iPhoneOS.sdk.tar.xz -C "$THEOS/sdks"
-          ls "$THEOS/sdks"
+          for ver in 14.5 15.6 16.5; do
+            curl -L -o "/tmp/iPhoneOS${ver}.sdk.tar.xz" \
+              "https://github.com/theos/sdks/releases/latest/download/iPhoneOS${ver}.sdk.tar.xz"
+            tar -xf "/tmp/iPhoneOS${ver}.sdk.tar.xz" -C "$THEOS/sdks"
+          done
+          echo "----- Nội dung $THEOS/sdks -----"
+          ls -la "$THEOS/sdks"
 
       # ---------- Build Comet (thư viện SwiftUI cho preferences) ----------
       - name: Clone and build Comet
