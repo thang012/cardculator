@@ -268,7 +268,8 @@ jobs:
 
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
-
+          make THEOS_PACKAGE_SCHEME=rootless 
+          
           echo "=========================================="
           echo "Checking Cardculator preference bundle"
           echo "=========================================="
