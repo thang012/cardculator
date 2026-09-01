@@ -42,18 +42,16 @@ jobs:
           git fetch && git checkout orion && git submodule update --init
 
       # ---------- Tải iPhoneOS SDK hiện đại (khớp Swift compiler của Xcode 16.4) ----------
-      - name: Download modern iPhoneOS SDK (sparse checkout)
+      - name: Download modern iPhoneOS SDK (release zip)
         run: |
           mkdir -p "$THEOS/sdks"
-          git clone --filter=blob:none --no-checkout --depth 1 \
-            https://github.com/xybp888/iOS-SDKs.git /tmp/ios-sdks
-          cd /tmp/ios-sdks
-          git sparse-checkout init --cone
-          git sparse-checkout set iPhoneOS18.4.sdk
-          git checkout master
-          mv iPhoneOS18.4.sdk "$THEOS/sdks/"
+          curl -L -o /tmp/iPhoneOS18.4.sdk.zip \
+            "https://github.com/xybp888/iOS-SDKs/releases/download/iOS18.4-SDKs/iPhoneOS18.4.sdk.zip"
+          ls -la /tmp/iPhoneOS18.4.sdk.zip
+          unzip -q /tmp/iPhoneOS18.4.sdk.zip -d "$THEOS/sdks"
           echo "----- Nội dung $THEOS/sdks -----"
           ls -la "$THEOS/sdks"
+          du -sh "$THEOS/sdks"/iPhoneOS18.4.sdk
 
       # ---------- Build Comet (thư viện SwiftUI cho preferences) ----------
       - name: Clone and build Comet
