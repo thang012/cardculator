@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo ln -sf /Applications/Xcode.app /Applications/Xcode-15.4.0.app
           ls -la /Applications/Xcode-15.4.0.app
-          
+
       # ---------- Cài Theos ----------
       - name: Install Theos
         run: |
@@ -66,7 +66,16 @@ jobs:
           git clone https://github.com/ginsudev/Comet.git
           cd Comet
 
-          sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:14.5|' Makefile
+          # SDK 18.4, deployment target 15.0 (máy test chạy iOS 16.7.1,
+          # Havoc public tối đa iOS 16.7.5 -> hạ target sát hơn để giảm
+          # nguy cơ thiếu symbol Swift overlay so với target 14.5 cũ)
+          sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:15.0|' Makefile
+
+          # Comet cũng dùng SwiftUI -> weak-link SwiftUICore và CoreGraphics
+          # để tránh lỗi "Symbol not found" trên các máy chạy iOS thấp hơn
+          # phiên bản mà SDK 18.4 mặc định trỏ tới.
+          echo 'Comet_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
+          echo 'Comet_SWIFTFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
 
           cat > Sources/CometC/include/LSApplicationWorkspace.h << 'EOF'
           #import <Foundation/Foundation.h>
@@ -172,9 +181,11 @@ jobs:
           # Kiểm tra binary Comet
           echo "----- Comet binary dependencies -----"
           otool -L "$THEOS/lib/iphone/rootless/Comet.framework/Comet" || true
+          echo "----- Comet load commands (weak vs required) -----"
+          otool -l "$THEOS/lib/iphone/rootless/Comet.framework/Comet" | grep -B2 -A5 "SwiftUICore\|CoreGraphics" || true
           ls -la "$THEOS/lib/iphone/rootless/" || true
           ls -la "$THEOS/lib/" | grep -i comet || true
-          
+
       # ---------- Thêm RemoteLog.h ----------
       - name: Add RemoteLog.h
         run: |
@@ -197,39 +208,40 @@ jobs:
             head -8 "$tbd"
           done
 
-          sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:14.0|' Makefile
+          # SDK 18.4, deployment target 15.0 (thay vì 14.0) -
+          # máy test chạy iOS 16.7.1, Havoc public tối đa 16.7.5.
+          # Target 14.0 quá xa so với SDK 18.4 gây thiếu symbol Swift
+          # overlay (vd. CGFloat trong CoreGraphics) trên máy thật.
+          sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:15.0|' Makefile
           sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
 
           # Vá tất cả Makefile con (prefs, cardculatorccmodule, ...)
           find . -name "Makefile" | while read mk; do
             echo "Patching $mk"
-            sed -i '' 's|iphone:clang:[0-9.]*:[0-9.]*|iphone:clang:18.4:14.0|g' "$mk"
+            sed -i '' 's|iphone:clang:[0-9.]*:[0-9.]*|iphone:clang:18.4:15.0|g' "$mk"
             sed -i '' 's|iPhoneOS[0-9.]*\.sdk|iPhoneOS18.4.sdk|g' "$mk"
           done
-          
-          echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore' >> Makefile
-          echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
-          echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet' >> Makefile
 
-          # prefs.bundle cũng dùng SwiftUI -> cũng bị link cứng vào SwiftUICore, cần weak-link luôn
+          echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
+          echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
+          echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet -Xlinker -weak_framework -Xlinker CoreGraphics' >> Makefile
+
+          # prefs.bundle cũng dùng SwiftUI -> cũng bị link cứng vào
+          # SwiftUICore và CoreGraphics, cần weak-link cả hai.
           PREFS_MK=$(find . -path "*/prefs/Makefile" | head -1)
           if [ -n "$PREFS_MK" ]; then
-            echo "Patching $PREFS_MK for weak SwiftUICore link"
-            # thêm dòng LDFLAGS vào Makefile của subproject prefs — thay <InstanceName> bằng tên biến thật trong file đó
-            PREFS_MK=$(find . -path "*/prefs/Makefile" | head -1)
-            if [ -n "$PREFS_MK" ]; then
-              echo "----- Nội dung $PREFS_MK -----"
-              cat "$PREFS_MK"
+            echo "Patching $PREFS_MK for weak SwiftUICore/CoreGraphics link"
+            echo "----- Nội dung $PREFS_MK -----"
+            cat "$PREFS_MK"
 
-              INSTANCE=$(grep -oE '^[A-Za-z0-9_]+_FILES' "$PREFS_MK" | head -1 | sed 's/_FILES$//')
-              echo "Detected prefs instance name: $INSTANCE"
+            INSTANCE=$(grep -oE '^[A-Za-z0-9_]+_FILES' "$PREFS_MK" | head -1 | sed 's/_FILES$//')
+            echo "Detected prefs instance name: $INSTANCE"
 
-              if [ -n "$INSTANCE" ]; then
-                echo "Patching $PREFS_MK for weak SwiftUICore link (instance: $INSTANCE)"
-                echo "${INSTANCE}_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore" >> "$PREFS_MK"
-              else
-                echo "WARNING: could not detect instance name in $PREFS_MK, weak-link NOT applied"
-              fi
+            if [ -n "$INSTANCE" ]; then
+              echo "Patching $PREFS_MK for weak SwiftUICore/CoreGraphics link (instance: $INSTANCE)"
+              echo "${INSTANCE}_LDFLAGS += -Xlinker -weak_framework -Xlinker SwiftUICore -Xlinker -weak_framework -Xlinker CoreGraphics" >> "$PREFS_MK"
+            else
+              echo "WARNING: could not detect instance name in $PREFS_MK, weak-link NOT applied"
             fi
           fi
 
@@ -290,8 +302,8 @@ jobs:
 
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
-          make THEOS_PACKAGE_SCHEME=rootless 
-          
+          make THEOS_PACKAGE_SCHEME=rootless
+
           echo "=========================================="
           echo "Checking Cardculator preference bundle"
           echo "=========================================="
@@ -325,6 +337,9 @@ jobs:
 
           echo "----- RPATH -----"
           otool -l "$PREF_BIN" | grep -A2 -B1 LC_RPATH || true
+
+          echo "----- LOAD COMMANDS: SwiftUICore / CoreGraphics (kiểm tra weak vs required) -----"
+          otool -l "$PREF_BIN" | grep -B2 -A5 "SwiftUICore\|CoreGraphics" || true
 
           make package THEOS_PACKAGE_SCHEME=rootless
 
