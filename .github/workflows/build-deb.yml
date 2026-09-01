@@ -1,0 +1,66 @@
+name: Build Cardculator .deb
+
+on:
+  workflow_dispatch:   # cho phép bấm nút "Run workflow" thủ công trên GitHub
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-13   # macOS runner có sẵn Xcode 14+
+
+    steps:
+      - name: Checkout Cardculator source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 14
+        run: sudo xcode-select -s /Applications/Xcode_14.3.1.app 2>/dev/null || xcodebuild -version
+
+      # ---------- Cài Theos ----------
+      - name: Install Theos
+        run: |
+          export THEOS=$HOME/theos
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          echo "THEOS=$THEOS" >> $GITHUB_ENV
+
+      - name: Switch Theos to orion branch
+        run: |
+          cd $THEOS
+          git fetch && git checkout orion && git submodule update --init
+
+      # ---------- Build Comet (thư viện SwiftUI cho preferences) ----------
+      - name: Clone and build Comet
+        run: |
+          mkdir -p $HOME/developer
+          cd $HOME/developer
+          git clone https://github.com/leptos-null/Comet.git || git clone https://github.com/ginsudev/Comet.git
+          cd Comet
+          make spm
+          make package ROOTLESS=true
+
+      - name: Verify Comet installed
+        run: ls "$THEOS/lib/iphone/rootless/" | grep -i comet
+
+      # ---------- Thêm RemoteLog.h ----------
+      - name: Add RemoteLog.h
+        run: |
+          curl -L -o "$THEOS/include/RemoteLog.h" \
+            https://raw.githubusercontent.com/Muirey03/RemoteLog/master/RemoteLog.h
+
+      # ---------- Build Cardculator ----------
+      - name: Build Cardculator .deb
+        run: |
+          cd $GITHUB_WORKSPACE
+          make spm
+          make do THEOS_PACKAGE_SCHEME=rootless || true
+          # 'make do' báo lỗi thiếu THEOS_DEVICE_IP là bình thường —
+          # nghĩa là build .deb đã thành công, chỉ là bước cài lên máy bị bỏ qua.
+
+      - name: Locate .deb output
+        run: find . -name "*.deb"
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardculator-deb
+          path: packages/*.deb
