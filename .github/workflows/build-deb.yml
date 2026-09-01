@@ -104,6 +104,7 @@ jobs:
           echo 'Comet_LDFLAGS += -F$(THEOS)/lib/iphone/rootless' >> Makefile
           echo 'Comet_FRAMEWORKS += libroot' >> Makefile
 
+          export THEOS_PACKAGE_SCHEME=rootless
           make spm
           make package ROOTLESS=true
 
