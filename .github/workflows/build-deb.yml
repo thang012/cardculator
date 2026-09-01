@@ -187,6 +187,13 @@ jobs:
           sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:14.0|' Makefile
           sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
 
+          # Vá tất cả Makefile con (prefs, cardculatorccmodule, ...)
+          find . -name "Makefile" | while read mk; do
+            echo "Patching $mk"
+            sed -i '' 's|iphone:clang:[0-9.]*:[0-9.]*|iphone:clang:18.4:14.0|g' "$mk"
+            sed -i '' 's|iPhoneOS[0-9.]*\.sdk|iPhoneOS18.4.sdk|g' "$mk"
+          done
+          
           echo 'Cardculator_LDFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless' >> Makefile
           echo 'Cardculator_FRAMEWORKS += Comet' >> Makefile
           echo 'Cardculator_SWIFTFLAGS += -F$(THEOS)/lib -F$(THEOS)/lib/iphone/rootless -framework Comet' >> Makefile
