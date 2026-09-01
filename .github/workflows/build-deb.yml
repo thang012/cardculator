@@ -149,16 +149,27 @@ jobs:
 
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
-          make package ROOTLESS=true
 
-          # Copy Comet.framework vào đúng chỗ rootless
+          # Chỉ dùng Comet.framework làm dependency lúc build Cardculator.
+          # Không package Comet vào Cardculator.
           mkdir -p "$THEOS/lib/iphone/rootless"
-          cp -R "$THEOS/lib/Comet.framework" "$THEOS/lib/iphone/rootless/" 2>/dev/null || true
-          # Nếu Comet cài vào staging thì tìm và copy
-          find "$HOME/developer/Comet" -name "Comet.framework" -type d | head -1 | while read fw; do
-            cp -R "$fw" "$THEOS/lib/iphone/rootless/"
-            cp -R "$fw" "$THEOS/lib/"
-          done
+
+          COMET_FW=$(find "$HOME/developer/Comet" -name "Comet.framework" -type d | head -1)
+
+          if [ -z "$COMET_FW" ]; then
+              echo "ERROR: Comet.framework not found"
+              exit 1
+          fi
+
+          echo "Found Comet.framework:"
+          echo "$COMET_FW"
+
+          rm -rf "$THEOS/lib/iphone/rootless/Comet.framework"
+          cp -R "$COMET_FW" "$THEOS/lib/iphone/rootless/"
+
+          # Kiểm tra binary Comet
+          echo "----- Comet binary dependencies -----"
+          otool -L "$THEOS/lib/iphone/rootless/Comet.framework/Comet" || true
           ls -la "$THEOS/lib/iphone/rootless/" || true
           ls -la "$THEOS/lib/" | grep -i comet || true
           
@@ -235,10 +246,62 @@ jobs:
             echo "ERROR: PreferenceStorage.swift not found anywhere"
             find . -name "*.swift" | grep -i pref
           fi
-          
+
+          PREF_BIN=$(find . -path "*prefs.bundle/prefs" -type f | head -1)
+
+          echo "prefs binary: $PREF_BIN"
+
+          if [ -n "$PREF_BIN" ]; then
+              echo "----- BEFORE -----"
+              otool -L "$PREF_BIN"
+
+              install_name_tool \
+                  -change "/Library/Frameworks/Comet.framework/Comet" \
+                  "@rpath/Comet.framework/Comet" \
+                  "$PREF_BIN"
+
+              echo "----- AFTER -----"
+              otool -L "$PREF_BIN"
+          fi
+
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
-          make package THEOS_PACKAGE_SCHEME=rootless || true
+
+          echo "=========================================="
+          echo "Checking Cardculator preference bundle"
+          echo "=========================================="
+
+          PREF_BIN=$(find . -path "*/prefs.bundle/prefs" -type f | head -1)
+
+          if [ -z "$PREF_BIN" ]; then
+              echo "ERROR: prefs binary not found"
+              find . -name "prefs" -type f
+              exit 1
+          fi
+
+          echo "prefs binary:"
+          echo "$PREF_BIN"
+
+          echo "----- BEFORE -----"
+          otool -L "$PREF_BIN"
+
+          # Fix absolute/rootful Comet path -> rootless rpath
+          if otool -L "$PREF_BIN" | grep -q "/Library/Frameworks/Comet.framework/Comet"; then
+              echo "Fixing rootful Comet dependency..."
+
+              install_name_tool \
+                  -change "/Library/Frameworks/Comet.framework/Comet" \
+                  "@rpath/Comet.framework/Comet" \
+                  "$PREF_BIN"
+          fi
+
+          echo "----- AFTER -----"
+          otool -L "$PREF_BIN"
+
+          echo "----- RPATH -----"
+          otool -l "$PREF_BIN" | grep -A2 -B1 LC_RPATH || true
+
+          make package THEOS_PACKAGE_SCHEME=rootless
 
       - name: Locate .deb output
         run: find . -name "*.deb"
