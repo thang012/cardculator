@@ -1,57 +1,75 @@
-name: Build Cardculator .deb
+```yaml
+name: Build Comet Rootless
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-15-arm64
+
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      THEOS: ${{ github.workspace }}/theos
+      SDKVERSION: 18.4
 
     steps:
-      # ---------- Checkout ----------
-      - name: Checkout Cardculator source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------- Xcode ----------
       - name: Select Xcode 16.4
+        shell: bash
         run: |
+          set -e
+
           sudo xcode-select -s /Applications/Xcode_16.4.app
 
           echo "DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer" >> "$GITHUB_ENV"
 
           export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
 
+          echo "========== XCODE =========="
           xcode-select -p
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
 
-      # ---------- Cài Theos ----------
       - name: Install Theos
+        shell: bash
         run: |
-          export THEOS="$HOME/theos"
+          set -e
+
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
+          export THEOS="$GITHUB_WORKSPACE/theos"
 
           git clone --recursive https://github.com/theos/theos.git "$THEOS"
 
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
 
-      # ---------- Theos Orion ----------
-      - name: Switch Theos to orion branch
+      - name: Switch Theos to Orion
+        shell: bash
         run: |
+          set -e
+
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
+          export THEOS="$GITHUB_WORKSPACE/theos"
+
           cd "$THEOS"
 
           git fetch origin
           git checkout orion
-
           git submodule update --init --recursive
 
           echo "Theos branch:"
           git branch --show-current
 
-      # ---------- iPhoneOS 18.4 SDK ----------
       - name: Install iPhoneOS 18.4 SDK
+        shell: bash
         run: |
+          set -e
+
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
+          export THEOS="$GITHUB_WORKSPACE/theos"
+
           SDK_DIR="$THEOS/sdks/iPhoneOS18.4.sdk"
 
           mkdir -p "$THEOS/sdks"
@@ -62,53 +80,65 @@ jobs:
 
           unzip -q /tmp/iPhoneOS18.4.sdk.zip -d "$THEOS/sdks"
 
-          # Xóa metadata thừa nếu có
           rm -rf "$THEOS/sdks/__MACOSX"
 
-          echo "Installed SDKs:"
+          echo "========== INSTALLED SDKs =========="
           find "$THEOS/sdks" -maxdepth 1 -type d -name "*.sdk" -print
 
-          echo "SDK size:"
+          echo "========== SDK SIZE =========="
           du -sh "$SDK_DIR"
 
-          # Kiểm tra SDK thực sự tồn tại
           test -d "$SDK_DIR"
-
-          # Kiểm tra SDK có các thành phần cơ bản
           test -f "$SDK_DIR/SDKSettings.plist"
 
           echo "iPhoneOS 18.4 SDK OK"
 
-      # ---------- Ép Theos dùng SDK 18.4 ----------
       - name: Configure Theos SDK
+        shell: bash
         run: |
+          set -e
+
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
+          export THEOS="$GITHUB_WORKSPACE/theos"
+
           SDK_DIR="$THEOS/sdks/iPhoneOS18.4.sdk"
 
-          echo "SDK_DIR=$SDK_DIR"
-
-          # Các biến này được export cho những step sau
-          echo "THEOS_SDKS=$THEOS/sdks" >> "$GITHUB_ENV"
-          echo "SDKVERSION=18.4" >> "$GITHUB_ENV"
-          echo "SYSROOT=$SDK_DIR" >> "$GITHUB_ENV"
-          echo "SDKROOT=$SDK_DIR" >> "$GITHUB_ENV"
-
-          # Kiểm tra
-          test -d "$SDK_DIR"
-
+          echo "THEOS=$THEOS"
           echo "THEOS_SDKS=$THEOS/sdks"
           echo "SDKVERSION=18.4"
           echo "SYSROOT=$SDK_DIR"
           echo "SDKROOT=$SDK_DIR"
 
-      # ---------- Debug SDK / Theos ----------
-      - name: Verify Theos SDK
+          echo "THEOS_SDKS=$THEOS/sdks" >> "$GITHUB_ENV"
+          echo "SDKVERSION=18.4" >> "$GITHUB_ENV"
+          echo "SYSROOT=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "SDKROOT=$SDK_DIR" >> "$GITHUB_ENV"
+
+          test -d "$SDK_DIR"
+          test -f "$SDK_DIR/SDKSettings.plist"
+
+      - name: Verify Toolchain
+        shell: bash
         run: |
+          set -e
+
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
+          export THEOS="$GITHUB_WORKSPACE/theos"
+          export SDKVERSION=18.4
+          export SYSROOT="$THEOS/sdks/iPhoneOS18.4.sdk"
+          export SDKROOT="$SYSROOT"
+          export THEOS_SDKS="$THEOS/sdks"
+
           echo "========== XCODE =========="
           xcodebuild -version
           xcode-select -p
 
           echo
-          echo "========== SDK =========="
+          echo "========== XCODE IPHONEOS SDK =========="
+          xcrun --sdk iphoneos --show-sdk-path
+
+          echo
+          echo "========== THEOS =========="
           echo "THEOS=$THEOS"
           echo "THEOS_SDKS=$THEOS_SDKS"
           echo "SDKVERSION=$SDKVERSION"
@@ -116,89 +146,77 @@ jobs:
           echo "SDKROOT=$SDKROOT"
 
           echo
-          echo "========== INSTALLED THEOS SDKS =========="
+          echo "========== THEOS SDKs =========="
           find "$THEOS/sdks" -maxdepth 1 -type d -name "*.sdk" -print
 
           echo
-          echo "========== XCODE IPHONEOS SDK =========="
-          xcrun --sdk iphoneos --show-sdk-path
-
-          echo
           echo "========== SDK CHECK =========="
-          test -d "$THEOS/sdks/iPhoneOS18.4.sdk"
-          test -f "$THEOS/sdks/iPhoneOS18.4.sdk/SDKSettings.plist"
+          test -d "$SYSROOT"
+          test -f "$SYSROOT/SDKSettings.plist"
 
           echo "SDK verification successful."
 
-      # ---------- Build Comet ----------
-      - name: Clone and build Comet
+      - name: Build Comet
+        shell: bash
         run: |
+          set -e
+
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
+          export THEOS="$GITHUB_WORKSPACE/theos"
           export SDKVERSION=18.4
           export SYSROOT="$THEOS/sdks/iPhoneOS18.4.sdk"
           export SDKROOT="$SYSROOT"
           export THEOS_SDKS="$THEOS/sdks"
 
-          echo "Building Comet with:"
+          # Xóa các biến Xcode/Swift cũ nếu có
+          unset TOOLCHAINS
+          unset SDKROOT_OVERRIDE
+          unset SWIFT_EXEC
+          unset DEVELOPER_DIR_OVERRIDE
+
+          # Đảm bảo Swift/SwiftPM dùng đúng Xcode 16.4
+          export PATH="/Applications/Xcode_16.4.app/Contents/Developer/usr/bin:$PATH"
+
+          echo "========== BUILD ENVIRONMENT =========="
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR"
           echo "THEOS=$THEOS"
           echo "SDKVERSION=$SDKVERSION"
           echo "SYSROOT=$SYSROOT"
 
-          mkdir -p "$HOME/developer"
+          echo
+          echo "========== SWIFT =========="
+          xcrun --find swift
+          xcrun swift --version
 
-          cd "$HOME/developer"
+          echo
+          echo "========== CLANG =========="
+          xcrun --find clang
+          xcrun clang --version
+
+          mkdir -p "$GITHUB_WORKSPACE/build"
+
+          cd "$GITHUB_WORKSPACE/build"
 
           git clone https://github.com/ginsudev/Comet.git
 
           cd Comet
 
+          echo
           echo "========== COMET SPM =========="
+
+          # Đảm bảo make/Swift không lấy Xcode 15.4 từ môi trường
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
 
           make spm
 
+          echo
           echo "========== COMET PACKAGE =========="
 
           make package ROOTLESS=true
 
-      # ---------- RemoteLog ----------
-      - name: Add RemoteLog.h
-        run: |
-          curl -L \
-            -o "$THEOS/include/RemoteLog.h" \
-            "https://raw.githubusercontent.com/Muirey03/RemoteLog/master/RemoteLog.h"
-
-          test -f "$THEOS/include/RemoteLog.h"
-
-          echo "RemoteLog.h installed."
-
-      # ---------- Build Cardculator ----------
-      - name: Build Cardculator .deb
-        run: |
-          export SDKVERSION=18.4
-          export SYSROOT="$THEOS/sdks/iPhoneOS18.4.sdk"
-          export SDKROOT="$SYSROOT"
-          export THEOS_SDKS="$THEOS/sdks"
-
-          cd "$GITHUB_WORKSPACE"
-
-          echo "========== CARDculator BUILD =========="
-          echo "THEOS=$THEOS"
-          echo "SDKVERSION=$SDKVERSION"
-          echo "SYSROOT=$SYSROOT"
-          echo "SDKROOT=$SDKROOT"
-
-          echo
-          echo "========== MAKE SPM =========="
-
-          make spm
-
-          echo
-          echo "========== MAKE PACKAGE =========="
-
-          make do THEOS_PACKAGE_SCHEME=rootless
-
-      # ---------- Find package ----------
-      - name: Locate .deb output
+      - name: Find DEB
         if: always()
+        shell: bash
         run: |
           echo "========== .DEB FILES =========="
 
@@ -207,11 +225,12 @@ jobs:
             -name "*.deb" \
             -print
 
-      # ---------- Upload ----------
-      - name: Upload .deb artifact
+      - name: Upload DEB
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: cardculator-deb
-          path: packages/*.deb
+          name: Comet-rootless
+          path: |
+            ${{ github.workspace }}/**/*.deb
           if-no-files-found: error
+```
