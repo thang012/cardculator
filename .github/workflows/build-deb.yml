@@ -62,20 +62,15 @@ jobs:
           git clone https://github.com/ginsudev/Comet.git
           cd Comet
 
-          # Sửa TARGET sang 18.4
           sed -i '' 's|TARGET = iphone:clang:16.5:14.5|TARGET = iphone:clang:18.4:14.5|' Makefile
 
-          # Vá header LSApplicationProxy
           cat > Sources/CometC/include/LSApplicationWorkspace.h << 'EOF'
           #import <Foundation/Foundation.h>
-
           NS_ASSUME_NONNULL_BEGIN
-
           @interface LSApplicationRecord : NSObject
           @property (readonly) NSArray<NSString *> * appTags;
           @property (getter=isLaunchProhibited,readonly) BOOL launchProhibited;
           @end
-
           @interface LSApplicationProxy : NSObject
           @property (nonatomic,readonly) LSApplicationRecord * correspondingApplicationRecord;
           @property (nonatomic,readonly) NSString * applicationType;
@@ -84,33 +79,41 @@ jobs:
           @property (nonatomic,readonly) NSURL * bundleURL;
           + (instancetype)applicationProxyForIdentifier:(NSString *)identifier;
           @end
-
           @interface LSApplicationWorkspace : NSObject
           + (instancetype)defaultWorkspace;
           - (NSArray<LSApplicationProxy *> *)allApplications;
           - (NSArray<LSApplicationProxy *> *)allInstalledApplications;
           - (BOOL)openApplicationWithBundleID:(NSString *)bundleID;
           @end
-
           NS_ASSUME_NONNULL_END
           EOF
 
-          # Vá Bundle+Comet.swift - bỏ import libroot, hardcode path rootless
           cat > Sources/Comet/Core/Extensions/Bundle+Comet.swift << 'EOF'
-          //
-          //  Bundle+Comet.swift
-          //  Comet
-          //
-
           import Foundation
-
           internal extension Bundle {
               static var comet: Bundle {
-                  // Hardcode path cho rootless (tránh phụ thuộc libroot module)
                   Bundle(path: "/var/jb/Library/Frameworks/Comet.framework/Bundle.bundle/")!
               }
           }
           EOF
+
+          python3 -c '
+          with open("Sources/Comet/Core/Service/ApplicationWorkspace.swift") as f:
+              content = f.read()
+          old = """            guard let proxies = LSApplicationWorkspace.default().allApplications() else {
+                completion([])
+                return
+            }"""
+          new = """            let proxies = LSApplicationWorkspace.default().allApplications()
+            if proxies.isEmpty {
+                completion([])
+                return
+            }"""
+          content = content.replace(old, new)
+          with open("Sources/Comet/Core/Service/ApplicationWorkspace.swift", "w") as f:
+              f.write(content)
+          print("Patched ApplicationWorkspace.swift")
+          '
 
           export THEOS_PACKAGE_SCHEME=rootless
           make spm
