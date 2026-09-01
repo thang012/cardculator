@@ -148,13 +148,15 @@ jobs:
           EOF
 
           export THEOS_PACKAGE_SCHEME=rootless
-          make spm
+          make package
 
           # Chỉ dùng Comet.framework làm dependency lúc build Cardculator.
           # Không package Comet vào Cardculator.
           mkdir -p "$THEOS/lib/iphone/rootless"
 
           COMET_FW=$(find "$HOME/developer/Comet" -name "Comet.framework" -type d | head -1)
+
+          find "$HOME/developer/Comet" -name "*.framework" -type d
 
           if [ -z "$COMET_FW" ]; then
               echo "ERROR: Comet.framework not found"
