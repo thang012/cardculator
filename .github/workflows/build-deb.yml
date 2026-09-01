@@ -174,8 +174,15 @@ jobs:
           unset DEVELOPER_DIR
           cd $GITHUB_WORKSPACE
 
-          # Vá CydiaSubstrate.tbd bị sai platform
-          find "$THEOS" -name "CydiaSubstrate.tbd" -exec sed -i '' 's/iOS-simulator/iOS/g' {} \;
+          # Vá CydiaSubstrate.tbd - bỏ arch simulator
+          find "$THEOS" -name "CydiaSubstrate.tbd" | while read tbd; do
+            echo "Fixing $tbd"
+            sed -i '' 's/, i386, x86_64//' "$tbd"
+            sed -i '' 's/, i386//' "$tbd"
+            sed -i '' 's/, x86_64//' "$tbd"
+            sed -i '' 's/platform: ios$/platform: iphoneos/' "$tbd"
+            head -8 "$tbd"
+          done
 
           sed -i '' 's|iphone:clang:16.4:13.0|iphone:clang:18.4:14.0|' Makefile
           sed -i '' 's|iPhoneOS16.4.sdk|iPhoneOS18.4.sdk|g' Makefile
