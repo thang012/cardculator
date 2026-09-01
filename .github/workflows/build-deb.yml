@@ -7,14 +7,14 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15   # macOS runner có sẵn Xcode 14+
+    runs-on: macos-15   # macOS runner có sẵn Xcode mới
 
     steps:
       - name: Checkout Cardculator source
         uses: actions/checkout@v4
 
-      - name: Select Xcode 14
-        run: sudo xcode-select -s /Applications/Xcode_14.3.1.app 2>/dev/null || xcodebuild -version
+      - name: Show default Xcode version
+        run: xcodebuild -version
 
       # ---------- Cài Theos ----------
       - name: Install Theos
@@ -28,12 +28,21 @@ jobs:
           cd $THEOS
           git fetch && git checkout orion && git submodule update --init
 
+      # ---------- Tải iPhoneOS SDK cho Theos ----------
+      - name: Download iPhoneOS SDK
+        run: |
+          mkdir -p "$THEOS/sdks"
+          curl -L -o /tmp/iPhoneOS.sdk.tar.xz \
+            https://github.com/theos/sdks/releases/latest/download/iPhoneOS15.6.sdk.tar.xz
+          tar -xf /tmp/iPhoneOS.sdk.tar.xz -C "$THEOS/sdks"
+          ls "$THEOS/sdks"
+
       # ---------- Build Comet (thư viện SwiftUI cho preferences) ----------
       - name: Clone and build Comet
         run: |
           mkdir -p $HOME/developer
           cd $HOME/developer
-          git clone https://github.com/leptos-null/Comet.git || git clone https://github.com/ginsudev/Comet.git
+          git clone https://github.com/ginsudev/Comet.git
           cd Comet
           make spm
           make package ROOTLESS=true
